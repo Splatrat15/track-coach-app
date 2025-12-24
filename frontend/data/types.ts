@@ -40,7 +40,7 @@ export interface AttendanceRecord {
   id: string;
   athleteId: string;
   date: Date;
-  status: 'present' | 'absent' | 'late' | 'excused';
+  status: 'present' | 'absent' | 'tardy' | 'excused';
   notes?: string;
   createdAt: Date;
 }
