@@ -1,14 +1,10 @@
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity, Platform, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, baseStyles } from '../../constants/styles';
 import { getAllAthletes, initializeAthletes, addAthlete, deleteAthlete } from '../../data/athletes';
 import { Athlete } from '../../data/types';
-import { 
-  getAttendanceRecordsByDate, 
-  initializeAttendanceRecords 
-} from '../../data/attendance';
 
 export default function AttendanceScreen() {
   const router = useRouter();
@@ -21,19 +17,11 @@ export default function AttendanceScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Get today's date (set to start of day for comparison)
-  const today = useMemo(() => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }, []);
 
   // Initialize data on mount
   useEffect(() => {
     const init = async () => {
       await initializeAthletes();
-      await initializeAttendanceRecords();
       setAthletes(getAllAthletes());
       setIsLoading(false);
     };
