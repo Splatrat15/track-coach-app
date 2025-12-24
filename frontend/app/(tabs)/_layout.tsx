@@ -41,6 +41,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="attendance/[id]"
+        options={{
+          href: null, // Hide from tab bar
+          headerShown: false, // Hide header, we have custom Go Back button
+        }}
+      />
+      <Tabs.Screen
         name="workout"
         options={{
           title: 'Workout',

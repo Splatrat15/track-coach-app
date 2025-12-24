@@ -1,103 +1,81 @@
 /**
  * Athletes Data
- * Store and manage athlete information
+ * Store and manage athlete information with AsyncStorage persistence
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Athlete } from './types';
 
-// Sample athletes data - replace with your actual data source
-export const athletes: Athlete[] = [
-  {
-    id: 'athlete_1',
-    name: 'Robert Thiel',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_2',
-    name: 'Jesse Hancock',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_3',
-    name: "La'a Hancock",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_4',
-    name: 'Bailey Orr',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_5',
-    name: 'Bethany Yaso',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_6',
-    name: 'Lydia Leeman',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_7',
-    name: 'Ben Leeman',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_8',
-    name: 'Jocelyn Prather',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_9',
-    name: 'Carter Frisk',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_10',
-    name: 'Evelyn Shearer',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_11',
-    name: 'Kendyl Taylor',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_12',
-    name: 'Caleb Wheeler',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_13',
-    name: 'Luke Littlefield',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_14',
-    name: 'Ethan Magaron',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'athlete_15',
-    name: 'Nicolette Magaron',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
+const STORAGE_KEY = '@athletes';
+
+// In-memory cache of athletes
+let athletes: Athlete[] = [];
+let isLoaded = false;
+
+/**
+ * Load athletes from AsyncStorage
+ */
+async function loadAthletes(): Promise<Athlete[]> {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEY);
+    if (data) {
+      const loaded = JSON.parse(data);
+      // Convert date strings back to Date objects
+      return loaded.map((athlete: any) => ({
+        ...athlete,
+        createdAt: new Date(athlete.createdAt),
+        updatedAt: new Date(athlete.updatedAt),
+      }));
+    }
+  } catch (error) {
+    console.error('Error loading athletes:', error);
+  }
+  return [];
+}
+
+/**
+ * Save athletes to AsyncStorage
+ */
+async function saveAthletes(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(athletes));
+  } catch (error) {
+    console.error('Error saving athletes:', error);
+  }
+}
+
+/**
+ * Initialize athletes (load from storage or use default)
+ */
+export async function initializeAthletes(): Promise<void> {
+  if (!isLoaded) {
+    const loaded = await loadAthletes();
+    if (loaded.length > 0) {
+      athletes = loaded;
+    } else {
+      // Default athletes if none exist
+      athletes = [
+        { id: 'athlete_1', name: 'Robert Thiel', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_2', name: 'Jesse Hancock', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_3', name: "La'a Hancock", createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_4', name: 'Bailey Orr', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_5', name: 'Bethany Yaso', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_6', name: 'Lydia Leeman', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_7', name: 'Ben Leeman', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_8', name: 'Jocelyn Prather', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_9', name: 'Carter Frisk', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_10', name: 'Evelyn Shearer', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_11', name: 'Kendyl Taylor', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_12', name: 'Caleb Wheeler', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_13', name: 'Luke Littlefield', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_14', name: 'Ethan Magaron', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_15', name: 'Nicolette Magaron', createdAt: new Date(), updatedAt: new Date() },
+      ];
+      await saveAthletes();
+    }
+    isLoaded = true;
+  }
+}
 
 /**
  * Get all athletes
@@ -123,7 +101,7 @@ export function getAthletesByTeam(team: string): Athlete[] {
 /**
  * Add a new athlete
  */
-export function addAthlete(athlete: Omit<Athlete, 'id' | 'createdAt' | 'updatedAt'>): Athlete {
+export async function addAthlete(athlete: Omit<Athlete, 'id' | 'createdAt' | 'updatedAt'>): Promise<Athlete> {
   const newAthlete: Athlete = {
     ...athlete,
     id: `athlete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -131,13 +109,14 @@ export function addAthlete(athlete: Omit<Athlete, 'id' | 'createdAt' | 'updatedA
     updatedAt: new Date(),
   };
   athletes.push(newAthlete);
+  await saveAthletes();
   return newAthlete;
 }
 
 /**
  * Update an athlete
  */
-export function updateAthlete(id: string, updates: Partial<Athlete>): Athlete | null {
+export async function updateAthlete(id: string, updates: Partial<Athlete>): Promise<Athlete | null> {
   const index = athletes.findIndex(athlete => athlete.id === id);
   if (index === -1) return null;
   
@@ -146,17 +125,18 @@ export function updateAthlete(id: string, updates: Partial<Athlete>): Athlete | 
     ...updates,
     updatedAt: new Date(),
   };
+  await saveAthletes();
   return athletes[index];
 }
 
 /**
  * Delete an athlete
  */
-export function deleteAthlete(id: string): boolean {
+export async function deleteAthlete(id: string): Promise<boolean> {
   const index = athletes.findIndex(athlete => athlete.id === id);
   if (index === -1) return false;
   
   athletes.splice(index, 1);
+  await saveAthletes();
   return true;
 }
-

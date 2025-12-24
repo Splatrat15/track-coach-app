@@ -1,22 +1,26 @@
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity, Platform } from 'react-native';
-import { useState, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity, Platform, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, baseStyles } from '../../constants/styles';
-import { getAllAthletes } from '../../data/athletes';
+import { getAllAthletes, initializeAthletes, addAthlete, deleteAthlete } from '../../data/athletes';
+import { Athlete } from '../../data/types';
 import { 
   getAttendanceRecordsByDate, 
-  findOrCreateAttendanceRecord,
-  deleteAttendanceRecord,
   initializeAttendanceRecords 
 } from '../../data/attendance';
-import { AttendanceRecord } from '../../data/types';
-
-type AttendanceStatus = 'present' | 'tardy' | 'absent' | null;
 
 export default function AttendanceScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
-  const athletes = getAllAthletes();
+  const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const [isRemoveMode, setIsRemoveMode] = useState(false);
+  const [isAddMode, setIsAddMode] = useState(false);
+  const [newAthleteName, setNewAthleteName] = useState('');
+  const scrollViewRef = useRef<ScrollView>(null);
+  const inputContainerRef = useRef<View>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Get today's date (set to start of day for comparison)
   const today = useMemo(() => {
@@ -25,62 +29,21 @@ export default function AttendanceScreen() {
     return date;
   }, []);
 
-  // Selected date state (defaults to today)
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date(today));
-  
-  // Load attendance records for selected date
-  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Initialize attendance data on mount
+  // Initialize data on mount
   useEffect(() => {
     const init = async () => {
+      await initializeAthletes();
       await initializeAttendanceRecords();
+      setAthletes(getAllAthletes());
       setIsLoading(false);
-      // Load initial data
-      const records = getAttendanceRecordsByDate(selectedDate);
-      setAttendanceRecords(records);
-      const attendanceMap: Record<string, AttendanceStatus> = {};
-      records.forEach(record => {
-        attendanceMap[record.athleteId] = record.status as AttendanceStatus;
-      });
-      setAttendance(attendanceMap);
     };
     init();
   }, []);
 
-  // Check if selected date is today
-  const isToday = useMemo(() => {
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected.getTime() === today.getTime();
-  }, [selectedDate, today]);
-
-  // Check if selected date is in the past or future (not today)
-  const isPastDate = useMemo(() => {
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected.getTime() !== today.getTime();
-  }, [selectedDate, today]);
-
-  // Load attendance for selected date
-  useEffect(() => {
-    if (!isLoading) {
-      const records = getAttendanceRecordsByDate(selectedDate);
-      setAttendanceRecords(records);
-      
-      // Convert records to attendance state
-      const attendanceMap: Record<string, AttendanceStatus> = {};
-      records.forEach(record => {
-        attendanceMap[record.athleteId] = record.status as AttendanceStatus;
-      });
-      setAttendance(attendanceMap);
-    }
-  }, [selectedDate, isLoading]);
 
   // Sort athletes by last name alphabetically
   const sortedAthletes = useMemo(() => {
+    if (athletes.length === 0) return [];
     return [...athletes].sort((a, b) => {
       const aLastName = a.name.split(' ').pop() || '';
       const bLastName = b.name.split(' ').pop() || '';
@@ -88,249 +51,210 @@ export default function AttendanceScreen() {
     });
   }, [athletes]);
 
-  // Handle attendance status change (only for today)
-  const handleStatusChange = async (athleteId: string, status: AttendanceStatus) => {
-    if (isPastDate) return; // Don't allow changes to past dates
-
-    const newStatus = attendance[athleteId] === status ? null : status;
+  // Handle adding a new athlete
+  const handleAddAthlete = async () => {
+    if (!newAthleteName.trim()) {
+      Alert.alert('Error', 'Please enter a name');
+      return;
+    }
     
-    // Update local state immediately for responsive UI
-    setAttendance(prev => ({
-      ...prev,
-      [athleteId]: newStatus,
-    }));
-
-    // Find existing record
-    const existingRecord = attendanceRecords.find(r => r.athleteId === athleteId);
-    
-    if (newStatus === null) {
-      // Delete record if status is cleared
-      if (existingRecord) {
-        await deleteAttendanceRecord(existingRecord.id);
-        // Reload records to update state
-        const records = getAttendanceRecordsByDate(selectedDate);
-        setAttendanceRecords(records);
-      }
-    } else {
-      // Create or update record
-      await findOrCreateAttendanceRecord(athleteId, selectedDate, newStatus);
-      // Reload records to update state
-      const records = getAttendanceRecordsByDate(selectedDate);
-      setAttendanceRecords(records);
+    try {
+      await addAthlete({ name: newAthleteName.trim() });
+      const updatedAthletes = getAllAthletes();
+      setAthletes([...updatedAthletes]);
+      setNewAthleteName('');
+      setIsAddMode(false);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add athlete');
     }
   };
 
-  // Calculate statistics
-  const stats = useMemo(() => {
-    const statuses = Object.values(attendance);
-    return {
-      present: statuses.filter(s => s === 'present').length,
-      tardy: statuses.filter(s => s === 'tardy').length,
-      absent: statuses.filter(s => s === 'absent').length,
-      total: sortedAthletes.length,
-    };
-  }, [attendance, sortedAthletes.length]);
+  // Handle removing an athlete
+  const handleRemoveAthlete = async (athleteId: string, athleteName: string) => {
+    Alert.alert(
+      'Remove Athlete',
+      `Are you sure you want to remove ${athleteName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAthlete(athleteId);
+              const updatedAthletes = getAllAthletes();
+              setAthletes([...updatedAthletes]);
+              setIsRemoveMode(false);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove athlete');
+            }
+          },
+        },
+      ]
+    );
+  };
 
-  // Format date for display
-  const formatDate = (date: Date): string => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(date);
-    selected.setHours(0, 0, 0, 0);
-    
-    if (selected.getTime() === today.getTime()) {
-      return 'Today';
+  // Navigate to athlete check-in screen
+  const handleAthletePress = (athleteId: string) => {
+    router.push(`/(tabs)/attendance/${athleteId}`);
+  };
+
+  // Scroll to input when it's focused
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 300);
+  };
+
+  // Scroll to input when add mode is activated
+  useEffect(() => {
+    if (isAddMode) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     }
-    
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (selected.getTime() === yesterday.getTime()) {
-      return 'Yesterday';
-    }
-    
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-  };
+  }, [isAddMode]);
 
-  // Navigate to previous day
-  const goToPreviousDay = () => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() - 1);
-    setSelectedDate(newDate);
-  };
 
-  // Navigate to next day
-  const goToNextDay = () => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + 1);
-    setSelectedDate(newDate);
-  };
-
-  // Go to today
-  const goToToday = () => {
-    setSelectedDate(new Date(today));
-  };
+  if (isLoading) {
+    return (
+      <View style={[baseStyles.container, styles.container]}>
+        <Text style={[baseStyles.text, styles.loadingText]}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView 
+    <KeyboardAvoidingView 
       style={[baseStyles.container, styles.container]}
-      contentContainerStyle={[
-        styles.contentContainer,
-        isTablet && styles.contentContainerTablet
-      ]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <View style={[styles.header, isTablet && styles.headerTablet]}>
-        <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
-          Attendance
-        </Text>
-        <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
-          Track athlete attendance for practice
-        </Text>
-      </View>
-
-      {/* Date Selector */}
-      <View style={[styles.card, isTablet && styles.cardTablet]}>
-        <View style={styles.dateSelector}>
-          <TouchableOpacity 
-            onPress={goToPreviousDay}
-            style={styles.dateNavButton}
-          >
-            <Ionicons name="chevron-back" size={24} color={Colors.primary} />
-          </TouchableOpacity>
-          
-          <View style={styles.dateDisplay}>
-            <Text style={[baseStyles.text, styles.dateText]}>
-              {formatDate(selectedDate)}
-            </Text>
-            {isPastDate && (
-              <Text style={[baseStyles.text, styles.readOnlyLabel]}>
-                (View Only)
-              </Text>
-            )}
-          </View>
-          
-          <TouchableOpacity 
-            onPress={goToNextDay}
-            style={styles.dateNavButton}
-          >
-            <Ionicons 
-              name="chevron-forward" 
-              size={24} 
-              color={Colors.primary} 
-            />
-          </TouchableOpacity>
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.contentContainer,
+          isTablet && styles.contentContainerTablet
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={true}
+      >
+        <View style={[styles.header, isTablet && styles.headerTablet]}>
+          <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
+            Attendance
+          </Text>
+          <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
+            Tap a name to check in
+          </Text>
         </View>
-        
-        {!isToday && (
-          <TouchableOpacity 
-            onPress={goToToday}
-            style={styles.todayButton}
-          >
-            <Text style={styles.todayButtonText}>Go to Today</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      
-      {/* Statistics Card */}
-      <View style={[styles.card, isTablet && styles.cardTablet]}>
-        <Text style={[baseStyles.text, styles.cardTitle]}>
-          {isToday ? "Today's" : formatDate(selectedDate)} Attendance
-        </Text>
-        <View style={styles.statusContainer}>
-          <View style={[styles.statusBadge, { backgroundColor: Colors.secondary }]}>
-            <Text style={styles.statusText}>Present: {stats.present}</Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: '#F59E0B' }]}>
-            <Text style={styles.statusText}>Tardy: {stats.tardy}</Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: Colors.text }]}>
-            <Text style={[styles.statusText, { color: Colors.white }]}>Absent: {stats.absent}</Text>
-          </View>
-        </View>
-      </View>
 
-      {/* Athletes List */}
-      <View style={[styles.card, isTablet && styles.cardTablet]}>
-        <Text style={[baseStyles.text, styles.cardTitle]}>Athletes ({stats.total})</Text>
-        {sortedAthletes.map((athlete) => {
-          const currentStatus = attendance[athlete.id] || null;
-          const isDisabled = isPastDate;
-          
-          return (
-            <View key={athlete.id} style={styles.athleteRow}>
-              <Text style={[baseStyles.text, styles.athleteName]}>{athlete.name}</Text>
-              <View style={styles.buttonContainer}>
-                {/* Present Button - Checkmark */}
+        {/* Athletes List */}
+        <View style={[styles.card, isTablet && styles.cardTablet]}>
+          <Text style={[baseStyles.text, styles.cardTitle, isTablet && styles.cardTitleTablet]}>
+            Athletes ({sortedAthletes.length})
+          </Text>
+
+          {sortedAthletes.map((athlete) => {
+            return (
+              <TouchableOpacity
+                key={athlete.id}
+                onPress={() => handleAthletePress(athlete.id)}
+                style={[styles.athleteRow, isTablet && styles.athleteRowTablet]}
+                activeOpacity={0.7}
+              >
+                <View style={styles.athleteNameContainer}>
+                  {isRemoveMode && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveAthlete(athlete.id, athlete.name)}
+                      style={styles.removeIconButton}
+                    >
+                      <Ionicons name="close-circle" size={isTablet ? 28 : 24} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
+                  <Text style={[baseStyles.text, styles.athleteName, isTablet && styles.athleteNameTablet]}>
+                    {athlete.name}
+                  </Text>
+                </View>
+                {!isRemoveMode && (
+                  <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={Colors.text} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+
+          {/* Add/Remove Buttons at Bottom */}
+          <View style={[styles.athletesFooter, isTablet && styles.athletesFooterTablet]}>
+            {!isAddMode && !isRemoveMode && (
+              <View style={styles.athletesActions}>
                 <TouchableOpacity
-                  style={[
-                    styles.statusButton,
-                    currentStatus === 'present' && styles.statusButtonActive,
-                    { backgroundColor: currentStatus === 'present' ? Colors.secondary : Colors.neutralBackground },
-                    isDisabled && styles.statusButtonDisabled
-                  ]}
-                  onPress={() => handleStatusChange(athlete.id, 'present')}
-                  disabled={isDisabled}
+                  onPress={() => setIsAddMode(true)}
+                  style={[styles.actionButton, styles.addButton, isTablet && styles.actionButtonTablet]}
                 >
-                  <Ionicons 
-                    name="checkmark" 
-                    size={isTablet ? 24 : 20} 
-                    color={currentStatus === 'present' ? Colors.white : (isDisabled ? Colors.neutralBackground : Colors.text)} 
-                  />
+                  <Ionicons name="add" size={isTablet ? 24 : 20} color={Colors.white} />
+                  <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Add</Text>
                 </TouchableOpacity>
-
-                {/* Tardy Button - Circle */}
                 <TouchableOpacity
-                  style={[
-                    styles.statusButton,
-                    currentStatus === 'tardy' && styles.statusButtonActive,
-                    { backgroundColor: currentStatus === 'tardy' ? '#F59E0B' : Colors.neutralBackground },
-                    isDisabled && styles.statusButtonDisabled
-                  ]}
-                  onPress={() => handleStatusChange(athlete.id, 'tardy')}
-                  disabled={isDisabled}
+                  onPress={() => setIsRemoveMode(true)}
+                  style={[styles.actionButton, styles.removeButton, isTablet && styles.actionButtonTablet]}
                 >
-                  <Ionicons 
-                    name="ellipse-outline" 
-                    size={isTablet ? 24 : 20} 
-                    color={currentStatus === 'tardy' ? Colors.white : (isDisabled ? Colors.neutralBackground : Colors.text)} 
-                  />
-                </TouchableOpacity>
-
-                {/* Absent Button - X */}
-                <TouchableOpacity
-                  style={[
-                    styles.statusButton,
-                    currentStatus === 'absent' && styles.statusButtonActive,
-                    { backgroundColor: currentStatus === 'absent' ? Colors.text : Colors.neutralBackground },
-                    isDisabled && styles.statusButtonDisabled
-                  ]}
-                  onPress={() => handleStatusChange(athlete.id, 'absent')}
-                  disabled={isDisabled}
-                >
-                  <Ionicons 
-                    name="close" 
-                    size={isTablet ? 24 : 20} 
-                    color={currentStatus === 'absent' ? Colors.white : (isDisabled ? Colors.neutralBackground : Colors.text)} 
-                  />
+                  <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={Colors.white} />
+                  <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Remove</Text>
                 </TouchableOpacity>
               </View>
+            )}
+            {(isAddMode || isRemoveMode) && (
+              <TouchableOpacity
+                onPress={() => {
+                  setIsAddMode(false);
+                  setIsRemoveMode(false);
+                  setNewAthleteName('');
+                }}
+                style={[styles.actionButton, styles.cancelButton, isTablet && styles.actionButtonTablet]}
+              >
+                <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Add Athlete Input */}
+          {isAddMode && (
+            <View 
+              ref={inputContainerRef}
+              style={[styles.addAthleteContainer, isTablet && styles.addAthleteContainerTablet]}
+            >
+              <TextInput
+                style={[styles.nameInput, isTablet && styles.nameInputTablet]}
+                placeholder="Enter athlete name"
+                placeholderTextColor={Colors.text}
+                value={newAthleteName}
+                onChangeText={setNewAthleteName}
+                onFocus={handleInputFocus}
+                autoFocus
+              />
+              <TouchableOpacity
+                onPress={handleAddAthlete}
+                style={[styles.submitButton, isTablet && styles.submitButtonTablet]}
+              >
+                <Ionicons name="checkmark" size={isTablet ? 28 : 24} color={Colors.white} />
+              </TouchableOpacity>
             </View>
-          );
-        })}
-      </View>
-    </ScrollView>
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
   },
   contentContainer: {
+    padding: 16,
     paddingBottom: 20,
   },
   contentContainerTablet: {
@@ -359,6 +283,11 @@ const styles = StyleSheet.create({
   subtitleTablet: {
     fontSize: 20,
   },
+  loadingText: {
+    fontSize: 18,
+    textAlign: 'center',
+    marginTop: 50,
+  },
   card: {
     backgroundColor: Colors.white,
     borderRadius: 12,
@@ -374,96 +303,127 @@ const styles = StyleSheet.create({
     padding: 32,
     borderRadius: 16,
   },
-  dateSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  dateNavButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  dateNavButtonDisabled: {
-    opacity: 0.3,
-  },
-  dateDisplay: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  dateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  readOnlyLabel: {
-    fontSize: 12,
-    color: Colors.text,
-    opacity: 0.6,
-    marginTop: 4,
-  },
-  todayButton: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignSelf: 'center',
-  },
-  todayButtonText: {
-    color: Colors.white,
-    fontWeight: '600',
-    fontSize: 14,
-  },
   cardTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 16,
   },
-  statusContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  statusBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  statusText: {
-    color: Colors.white,
-    fontWeight: '600',
-    fontSize: 14,
+  cardTitleTablet: {
+    fontSize: 24,
+    marginBottom: 20,
   },
   athleteRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutralBackground,
   },
+  athleteRowTablet: {
+    paddingVertical: 20,
+  },
+  athleteNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
   athleteName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '500',
     flex: 1,
   },
-  buttonContainer: {
+  athleteNameTablet: {
+    fontSize: 22,
+  },
+  removeIconButton: {
+    padding: 4,
+  },
+  athletesFooter: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.neutralBackground,
+  },
+  athletesFooterTablet: {
+    marginTop: 24,
+    paddingTop: 20,
+  },
+  athletesActions: {
     flexDirection: 'row',
     gap: 8,
+    justifyContent: 'center',
   },
-  statusButton: {
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minWidth: 100,
+    justifyContent: 'center',
+  },
+  actionButtonTablet: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    minWidth: 120,
+    gap: 8,
+  },
+  addButton: {
+    backgroundColor: Colors.secondary,
+  },
+  removeButton: {
+    backgroundColor: '#EF4444',
+  },
+  cancelButton: {
+    backgroundColor: Colors.text,
+  },
+  actionButtonText: {
+    color: Colors.white,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  actionButtonTextTablet: {
+    fontSize: 16,
+  },
+  addAthleteContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  addAthleteContainerTablet: {
+    gap: 12,
+    marginTop: 16,
+  },
+  nameInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: Colors.text,
+    backgroundColor: Colors.white,
+  },
+  nameInputTablet: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 18,
+  },
+  submitButton: {
+    backgroundColor: Colors.secondary,
     width: 44,
     height: 44,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
   },
-  statusButtonActive: {
-    borderColor: Colors.white,
-  },
-  statusButtonDisabled: {
-    opacity: 0.5,
+  submitButtonTablet: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
 });
