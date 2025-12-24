@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/styles';
 
 export default function TabLayout() {
@@ -30,17 +31,23 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="workout"
-        options={{
-          title: 'Workout',
-          tabBarLabel: 'Workout',
-        }}
-      />
-      <Tabs.Screen
         name="attendance"
         options={{
           title: 'Attendance',
           tabBarLabel: 'Attendance',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="checkmark-circle" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="workout"
+        options={{
+          title: 'Workout',
+          tabBarLabel: 'Workout',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="fitness" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -48,6 +55,9 @@ export default function TabLayout() {
         options={{
           title: 'Messages',
           tabBarLabel: 'Messages',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>
