@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity, Platform, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { useRouter } from 'expo-router';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, baseStyles } from '../../constants/styles';
 import { getAllAthletes, initializeAthletes, addAthlete, deleteAthlete } from '../../data/athletes';
+import { initializeAttendanceRecords, getAttendanceRecordsByDate } from '../../data/attendance';
 import { Athlete } from '../../data/types';
 
 export default function AttendanceScreen() {
@@ -13,7 +14,8 @@ export default function AttendanceScreen() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [isRemoveMode, setIsRemoveMode] = useState(false);
   const [isAddMode, setIsAddMode] = useState(false);
-  const [newAthleteName, setNewAthleteName] = useState('');
+  const [newAthleteFirstName, setNewAthleteFirstName] = useState('');
+  const [newAthleteLastName, setNewAthleteLastName] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,12 +24,38 @@ export default function AttendanceScreen() {
   useEffect(() => {
     const init = async () => {
       await initializeAthletes();
+      await initializeAttendanceRecords();
       setAthletes(getAllAthletes());
       setIsLoading(false);
     };
     init();
   }, []);
 
+  // Refresh attendance status when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const refresh = async () => {
+        await initializeAttendanceRecords();
+        // Force re-render by updating athletes state
+        setAthletes([...getAllAthletes()]);
+      };
+      refresh();
+    }, [])
+  );
+
+
+  // Get today's date for checking attendance
+  const today = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
+
+  // Check if an athlete is checked in today
+  const isAthleteCheckedIn = (athleteId: string): boolean => {
+    const records = getAttendanceRecordsByDate(today);
+    return records.some(r => r.athleteId === athleteId && r.status === 'present');
+  };
 
   // Sort athletes by last name alphabetically
   const sortedAthletes = useMemo(() => {
@@ -41,16 +69,25 @@ export default function AttendanceScreen() {
 
   // Handle adding a new athlete
   const handleAddAthlete = async () => {
-    if (!newAthleteName.trim()) {
-      Alert.alert('Error', 'Please enter a name');
+    const firstName = newAthleteFirstName.trim();
+    const lastName = newAthleteLastName.trim();
+    
+    if (!firstName) {
+      Alert.alert('Error', 'Please enter a first name');
+      return;
+    }
+    
+    if (!lastName) {
+      Alert.alert('Error', 'Please enter a last name');
       return;
     }
     
     try {
-      await addAthlete({ name: newAthleteName.trim() });
+      await addAthlete({ name: `${firstName} ${lastName}` });
       const updatedAthletes = getAllAthletes();
       setAthletes([...updatedAthletes]);
-      setNewAthleteName('');
+      setNewAthleteFirstName('');
+      setNewAthleteLastName('');
       setIsAddMode(false);
     } catch (error) {
       Alert.alert('Error', 'Failed to add athlete');
@@ -165,7 +202,17 @@ export default function AttendanceScreen() {
                   </Text>
                 </View>
                 {!isRemoveMode && (
-                  <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={Colors.text} />
+                  <View style={styles.iconsContainer}>
+                    {isAthleteCheckedIn(athlete.id) && (
+                      <Ionicons 
+                        name="checkmark-circle" 
+                        size={isTablet ? 24 : 20} 
+                        color={Colors.secondary} 
+                        style={styles.checkmarkIcon}
+                      />
+                    )}
+                    <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={Colors.text} />
+                  </View>
                 )}
               </TouchableOpacity>
             );
@@ -196,7 +243,8 @@ export default function AttendanceScreen() {
                 onPress={() => {
                   setIsAddMode(false);
                   setIsRemoveMode(false);
-                  setNewAthleteName('');
+                  setNewAthleteFirstName('');
+                  setNewAthleteLastName('');
                 }}
                 style={[styles.actionButton, styles.cancelButton, isTablet && styles.actionButtonTablet]}
               >
@@ -211,15 +259,25 @@ export default function AttendanceScreen() {
               ref={inputContainerRef}
               style={[styles.addAthleteContainer, isTablet && styles.addAthleteContainerTablet]}
             >
-              <TextInput
-                style={[styles.nameInput, isTablet && styles.nameInputTablet]}
-                placeholder="Enter athlete name"
-                placeholderTextColor={Colors.text}
-                value={newAthleteName}
-                onChangeText={setNewAthleteName}
-                onFocus={handleInputFocus}
-                autoFocus
-              />
+              <View style={styles.nameInputsRow}>
+                <TextInput
+                  style={[styles.nameInput, styles.firstNameInput, isTablet && styles.nameInputTablet]}
+                  placeholder="First name"
+                  placeholderTextColor={Colors.text}
+                  value={newAthleteFirstName}
+                  onChangeText={setNewAthleteFirstName}
+                  onFocus={handleInputFocus}
+                  autoFocus
+                />
+                <TextInput
+                  style={[styles.nameInput, styles.lastNameInput, isTablet && styles.nameInputTablet]}
+                  placeholder="Last name"
+                  placeholderTextColor={Colors.text}
+                  value={newAthleteLastName}
+                  onChangeText={setNewAthleteLastName}
+                  onFocus={handleInputFocus}
+                />
+              </View>
               <TouchableOpacity
                 onPress={handleAddAthlete}
                 style={[styles.submitButton, isTablet && styles.submitButtonTablet]}
@@ -328,6 +386,14 @@ const styles = StyleSheet.create({
   removeIconButton: {
     padding: 4,
   },
+  iconsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkmarkIcon: {
+    marginRight: 0,
+  },
   athletesFooter: {
     marginTop: 16,
     paddingTop: 16,
@@ -380,10 +446,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 12,
+    alignItems: 'flex-start',
   },
   addAthleteContainerTablet: {
     gap: 12,
     marginTop: 16,
+  },
+  nameInputsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
   },
   nameInput: {
     flex: 1,
@@ -395,6 +467,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
     backgroundColor: Colors.white,
+  },
+  firstNameInput: {
+    flex: 1,
+  },
+  lastNameInput: {
+    flex: 1,
   },
   nameInputTablet: {
     paddingHorizontal: 16,

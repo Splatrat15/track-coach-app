@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AttendanceRecord } from './types';
 
 const STORAGE_KEY = '@attendance_records';
+const LAST_RESET_DATE_KEY = '@attendance_last_reset_date';
 
 // In-memory cache of attendance records
 let attendanceRecords: AttendanceRecord[] = [];
@@ -51,6 +52,39 @@ function cleanupOldRecords(): void {
 }
 
 /**
+ * Reset today's check-ins if it's a new day
+ */
+async function resetTodaysCheckInsIfNewDay(): Promise<void> {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+    
+    // Get the last reset date
+    const lastResetDateStr = await AsyncStorage.getItem(LAST_RESET_DATE_KEY);
+    
+    // If it's a new day, reset today's check-ins
+    if (lastResetDateStr !== todayStr) {
+      // Delete all "present" records for today
+      const todayStrForComparison = today.toISOString().split('T')[0];
+      attendanceRecords = attendanceRecords.filter(record => {
+        const recordDateStr = new Date(record.date).toISOString().split('T')[0];
+        // Keep the record if it's not from today OR if it's not a "present" status
+        return recordDateStr !== todayStrForComparison || record.status !== 'present';
+      });
+      
+      // Update the last reset date
+      await AsyncStorage.setItem(LAST_RESET_DATE_KEY, todayStr);
+      
+      // Save the updated records
+      await saveAttendanceRecords();
+    }
+  } catch (error) {
+    console.error('Error resetting today\'s check-ins:', error);
+  }
+}
+
+/**
  * Save attendance records to AsyncStorage
  */
 async function saveAttendanceRecords(): Promise<void> {
@@ -71,9 +105,12 @@ export async function initializeAttendanceRecords(): Promise<void> {
     attendanceRecords = await loadAttendanceRecords();
     // Clean up old records on load
     cleanupOldRecords();
-    // Save cleaned up records back to storage
-    await saveAttendanceRecords();
+    // Reset today's check-ins if it's a new day
+    await resetTodaysCheckInsIfNewDay();
     isLoaded = true;
+  } else {
+    // Even if already loaded, check if we need to reset for a new day
+    await resetTodaysCheckInsIfNewDay();
   }
 }
 

@@ -28,6 +28,7 @@ export interface Workout {
 export interface Exercise {
   id: string;
   name: string;
+  section?: 'warmup' | 'workout' | 'postworkout';
   sets?: number;
   reps?: number;
   weight?: number;
