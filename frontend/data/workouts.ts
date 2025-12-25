@@ -6,8 +6,97 @@
 import { Workout, Exercise } from './types';
 
 // Sample workouts data - replace with your actual data source
+// Helper function to create a normalized date (midnight local time)
+function createDate(year: number, month: number, day: number): Date {
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 export const workouts: Workout[] = [
-  // Add your workouts here
+  {
+    id: 'workout_dec_24_2025',
+    name: 'Workout',
+    date: createDate(2025, 12, 24),
+    workoutType: 'workout',
+    exercises: [
+      {
+        id: 'workout_rookies',
+        name: 'Rookies',
+        section: 'workout',
+        group: 'rookies',
+        pace: 'recovery',
+        duration: 25, // 25 minutes
+      },
+      {
+        id: 'workout_veterans',
+        name: 'Veterans',
+        section: 'workout',
+        group: 'veterans',
+        pace: 'recovery',
+        duration: 30, // 30 minutes
+      },
+      {
+        id: 'workout_varsity',
+        name: 'Varsity',
+        section: 'workout',
+        group: 'varsity',
+        pace: 'recovery',
+        duration: 35, // 35 minutes
+      },
+      // Post-workout exercises for this specific day
+      {
+        id: 'postworkout-strides-rookies',
+        name: 'Strides',
+        section: 'postworkout',
+        group: 'rookies',
+        reps: 2,
+      },
+      {
+        id: 'postworkout-strides-veterans',
+        name: 'Strides',
+        section: 'postworkout',
+        group: 'veterans',
+        reps: 4,
+      },
+      {
+        id: 'postworkout-strides-varsity',
+        name: 'Strides',
+        section: 'postworkout',
+        group: 'varsity',
+        reps: 4,
+      },
+      {
+        id: 'postworkout-stadiums',
+        name: 'Stadiums',
+        section: 'postworkout',
+        reps: 4,
+      },
+    ],
+    athleteIds: [],
+    createdAt: createDate(2025, 12, 24),
+    updatedAt: createDate(2025, 12, 24),
+  },
+  {
+    id: 'workout_dec_25_2025',
+    name: 'Workout',
+    date: createDate(2025, 12, 25),
+    workoutType: 'longrun',
+    exercises: [],
+    athleteIds: [],
+    createdAt: createDate(2025, 12, 25),
+    updatedAt: createDate(2025, 12, 25),
+  },
+  {
+    id: 'workout_dec_26_2025',
+    name: 'Workout',
+    date: createDate(2025, 12, 26),
+    workoutType: 'recovery',
+    exercises: [],
+    athleteIds: [],
+    createdAt: createDate(2025, 12, 26),
+    updatedAt: createDate(2025, 12, 26),
+  },
 ];
 
 /**

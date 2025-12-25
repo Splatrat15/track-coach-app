@@ -19,20 +19,31 @@ export interface Workout {
   name: string;
   description?: string;
   date: Date;
-  exercises: Exercise[];
+  workoutType?: 'workout' | 'longrun' | 'recovery'; // Determines which Dynamics template to use
+  exercises: Exercise[]; // Dynamic exercises
+  templateSections?: string[]; // References to template section IDs (e.g., ['cooldown'])
   athleteIds: string[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface WorkoutTemplate {
+  id: string;
+  name: string;
+  section: 'warmup' | 'workout' | 'postworkout';
+  exercises: Exercise[]; // Static exercises that are always the same
 }
 
 export interface Exercise {
   id: string;
   name: string;
   section?: 'warmup' | 'workout' | 'postworkout';
+  group?: 'rookies' | 'veterans' | 'varsity';
+  pace?: 'recovery' | 'self-selected' | 'steady' | 'threshold';
   sets?: number;
   reps?: number;
   weight?: number;
-  duration?: number; // in seconds
+  duration?: number; // in seconds (for workout groups, this is in minutes)
   distance?: number; // in meters
   notes?: string;
 }

@@ -9,4 +9,5 @@ export * from './athletes';
 export * from './workouts';
 export * from './attendance';
 export * from './locations';
+export * from './workoutTemplates';
 

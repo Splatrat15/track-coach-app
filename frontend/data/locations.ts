@@ -7,15 +7,19 @@
 function getDateKey(date: Date): string {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  // Use YYYY-MM-DD format to avoid timezone issues
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Location/address mapping by date
 const locationMap: { [key: string]: string } = {
   // December 24, 2025
-  [getDateKey(new Date('2025-12-24'))]: '1234 E BlahBlah Rd',
+  '2025-12-24': '1234 E BlahBlah Rd',
   // December 25, 2025
-  [getDateKey(new Date('2025-12-25'))]: '5678 N asdfasdf Street',
+  '2025-12-25': '5678 N asdfasdf Street',
 };
 
 /**

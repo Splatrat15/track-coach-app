@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Colors, baseStyles } from '../../constants/styles';
 import { getAllWorkouts } from '../../data/workouts';
-import { Workout } from '../../data/types';
+import { Workout, Exercise } from '../../data/types';
 import { getLocationForDate } from '../../data/locations';
+import { getTemplateById, getStretchTemplateIdForWorkoutType } from '../../data/workoutTemplates';
 
 // Helper function to check if a date is today
 function isToday(date: Date): boolean {
@@ -66,7 +67,11 @@ function formatDate(date: Date): string {
 function getDateKey(date: Date): string {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  // Use YYYY-MM-DD format to avoid timezone issues
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export default function WorkoutScreen() {
@@ -78,6 +83,8 @@ export default function WorkoutScreen() {
     today.setHours(0, 0, 0, 0);
     return today;
   });
+  // Track which sections are open/closed for each workout
+  const [expandedSections, setExpandedSections] = useState<{ [workoutId: string]: { [sectionKey: string]: boolean } }>({});
 
   useEffect(() => {
     setWorkouts(getAllWorkouts());
@@ -137,6 +144,21 @@ export default function WorkoutScreen() {
     }
   };
 
+  const toggleSection = (workoutId: string, sectionKey: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [workoutId]: {
+        ...prev[workoutId],
+        [sectionKey]: !prev[workoutId]?.[sectionKey],
+      },
+    }));
+  };
+
+  const isSectionExpanded = (workoutId: string, sectionKey: string): boolean => {
+    // Default to expanded (true) if not set
+    return expandedSections[workoutId]?.[sectionKey] !== false;
+  };
+
 
   return (
     <ScrollView 
@@ -188,6 +210,19 @@ export default function WorkoutScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Today Button */}
+      {!isToday(selectedDate) && (
+        <TouchableOpacity 
+          onPress={goToToday}
+          style={[styles.todayButton, isTablet && styles.todayButtonTablet]}
+          activeOpacity={0.7}
+        >
+          <Text style={[baseStyles.text, styles.todayButtonText, isTablet && styles.todayButtonTextTablet]}>
+            Today
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Location Box */}
       {getLocationForDate(selectedDate) && (
         <View style={[styles.locationCard, isTablet && styles.locationCardTablet]}>
@@ -221,19 +256,6 @@ export default function WorkoutScreen() {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Today Button */}
-      {!isToday(selectedDate) && (
-        <TouchableOpacity 
-          onPress={goToToday}
-          style={[styles.todayButton, isTablet && styles.todayButtonTablet]}
-          activeOpacity={0.7}
-        >
-          <Text style={[baseStyles.text, styles.todayButtonText, isTablet && styles.todayButtonTextTablet]}>
-            Today
-          </Text>
-        </TouchableOpacity>
-      )}
       
       {/* Workouts for selected date */}
       {selectedDateWorkouts.length === 0 ? (
@@ -244,15 +266,62 @@ export default function WorkoutScreen() {
         </View>
       ) : (
         selectedDateWorkouts.map(workout => {
-          // Group exercises by section
-          const warmupExercises = workout.exercises.filter(ex => ex.section === 'warmup' || !ex.section);
-          const workoutExercises = workout.exercises.filter(ex => ex.section === 'workout');
-          const postWorkoutExercises = workout.exercises.filter(ex => ex.section === 'postworkout');
+          // Get template exercises
+          // Always include warmup and cooldown templates
+          const defaultTemplates = ['warmup', 'cooldown'];
+          
+          // Add stretch template based on workout type
+          const stretchTemplateId = getStretchTemplateIdForWorkoutType(workout.workoutType);
+          if (stretchTemplateId) {
+            defaultTemplates.push(stretchTemplateId);
+          }
+          
+          const allTemplateIds = [...defaultTemplates, ...(workout.templateSections || [])];
+          const uniqueTemplateIds = Array.from(new Set(allTemplateIds)); // Remove duplicates
+          
+          const templateExercises: Exercise[] = [];
+          const templateExerciseIds = new Set<string>();
+          uniqueTemplateIds.forEach(templateId => {
+            const template = getTemplateById(templateId);
+            if (template) {
+              template.exercises.forEach(ex => {
+                templateExercises.push(ex);
+                if (ex.id) templateExerciseIds.add(ex.id);
+              });
+            }
+          });
 
-          const sections = [
+          // Merge template exercises with dynamic exercises
+          const allExercises = [...workout.exercises, ...templateExercises];
+
+          // Group exercises by section
+          // Dynamic exercises without a section default to warmup
+          const warmupExercises = allExercises.filter(ex => {
+            if (ex.section === 'warmup') return true;
+            // Dynamic exercise without section defaults to warmup
+            if (!ex.section && ex.id && !templateExerciseIds.has(ex.id)) return true;
+            return false;
+          });
+          const workoutExercises = allExercises.filter(ex => ex.section === 'workout');
+          const postWorkoutExercises = allExercises.filter(ex => ex.section === 'postworkout');
+          
+          // Separate strides from other post-workout exercises
+          const strideExercises = postWorkoutExercises.filter(ex => 
+            ex.name?.toLowerCase() === 'strides' && ex.group
+          );
+          const otherPostWorkoutExercises = postWorkoutExercises.filter(ex => 
+            !(ex.name?.toLowerCase() === 'strides' && ex.group)
+          );
+
+          const sections: Array<{
+            title: string;
+            exercises: Exercise[];
+            key: string;
+            strides?: Exercise[];
+          }> = [
             { title: 'Warm Up', exercises: warmupExercises, key: 'warmup' },
             { title: 'Workout', exercises: workoutExercises, key: 'workout' },
-            { title: 'Post-Workout', exercises: postWorkoutExercises, key: 'postworkout' },
+            { title: 'Post-Workout', exercises: otherPostWorkoutExercises, key: 'postworkout', strides: strideExercises },
           ];
 
           return (
@@ -267,49 +336,168 @@ export default function WorkoutScreen() {
               )}
 
               {/* Exercise Sections */}
-              {sections.map(section => (
-                section.exercises.length > 0 && (
-                  <View key={section.key} style={styles.exerciseSection}>
-                    <Text style={[baseStyles.heading, styles.sectionTitle, isTablet && styles.sectionTitleTablet]}>
-                      {section.title}
-                    </Text>
-                    {section.exercises.map((exercise, index) => (
-                      <View key={exercise.id || index} style={styles.exerciseItem}>
-                        <Text style={[baseStyles.text, styles.exerciseName]}>
-                          {exercise.name}
-                        </Text>
-                        <View style={styles.exerciseDetails}>
-                          {exercise.sets && exercise.reps && (
-                            <Text style={[baseStyles.text, styles.exerciseDetail, { marginRight: 12 }]}>
-                              {exercise.sets} sets × {exercise.reps} reps
-                            </Text>
-                          )}
-                          {exercise.weight && (
-                            <Text style={[baseStyles.text, styles.exerciseDetail, { marginRight: 12 }]}>
-                              {exercise.weight} lbs
-                            </Text>
-                          )}
-                          {exercise.duration && (
-                            <Text style={[baseStyles.text, styles.exerciseDetail, { marginRight: 12 }]}>
-                              {Math.floor(exercise.duration / 60)}:{(exercise.duration % 60).toString().padStart(2, '0')}
-                            </Text>
-                          )}
-                          {exercise.distance && (
-                            <Text style={[baseStyles.text, styles.exerciseDetail]}>
-                              {exercise.distance}m
-                            </Text>
-                          )}
-                        </View>
-                        {exercise.notes && (
-                          <Text style={[baseStyles.text, styles.exerciseNotes]}>
-                            {exercise.notes}
+              {sections.map(section => {
+                const isExpanded = isSectionExpanded(workout.id, section.key);
+                return (
+                  section.exercises.length > 0 && (
+                    <View key={section.key} style={styles.exerciseSection}>
+                      <TouchableOpacity
+                        onPress={() => toggleSection(workout.id, section.key)}
+                        style={[styles.sectionHeader, isTablet && styles.sectionHeaderTablet]}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.sectionHeaderContent}>
+                          <Text style={[baseStyles.heading, styles.sectionTitle, isTablet && styles.sectionTitleTablet]}>
+                            {section.title}
                           </Text>
-                        )}
-                      </View>
-                    ))}
-                  </View>
-                )
-              ))}
+                          <Ionicons
+                            name={isExpanded ? "chevron-down" : "chevron-forward"}
+                            size={isTablet ? 28 : 24}
+                            color={Colors.white}
+                            style={styles.sectionArrow}
+                          />
+                        </View>
+                      </TouchableOpacity>
+                      {isExpanded && (
+                        <>
+                          <View style={styles.sectionDivider} />
+                          {/* Strides dropdown for post-workout section */}
+                          {section.key === 'postworkout' && section.strides && section.strides.length > 0 && (() => {
+                            const stridesKey = `${workout.id}_strides`;
+                            const isStridesExpanded = expandedSections[workout.id]?.[stridesKey] !== false;
+                            return (
+                              <View style={styles.stridesContainer}>
+                                <TouchableOpacity
+                                  onPress={() => toggleSection(workout.id, stridesKey)}
+                                  style={styles.stridesHeader}
+                                  activeOpacity={0.7}
+                                >
+                                  <View style={styles.stridesHeaderContent}>
+                                    <Text style={[baseStyles.text, styles.stridesTitle]}>
+                                      Strides
+                                    </Text>
+                                    <Ionicons
+                                      name={isStridesExpanded ? "chevron-down" : "chevron-forward"}
+                                      size={20}
+                                      color={Colors.primary}
+                                    />
+                                  </View>
+                                </TouchableOpacity>
+                                {isStridesExpanded && (
+                                  <View style={styles.stridesContent}>
+                                    {section.strides.map((stride, idx) => (
+                                      <View key={stride.id || idx} style={styles.strideItem}>
+                                        <Text style={[baseStyles.text, styles.strideGroup]}>
+                                          {stride.group?.charAt(0).toUpperCase() + stride.group?.slice(1)}:
+                                        </Text>
+                                        <Text style={[baseStyles.text, styles.strideCount]}>
+                                          {stride.reps}
+                                        </Text>
+                                      </View>
+                                    ))}
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          })()}
+                          {section.exercises.map((exercise, index) => {
+                            // Check if this is a grouped workout exercise
+                            const isGroupedWorkout = exercise.group && exercise.pace && section.key === 'workout';
+                            // Check if this is a grouped post-workout exercise (strides)
+                            const isGroupedPostWorkout = exercise.group && section.key === 'postworkout' && exercise.reps;
+                            
+                            return (
+                              <View 
+                                key={exercise.id || index} 
+                                style={[
+                                  styles.exerciseItem,
+                                  index === section.exercises.length - 1 && styles.exerciseItemLast
+                                ]}
+                              >
+                                {isGroupedWorkout ? (
+                                  // Grouped workout display
+                                  <>
+                                    <View style={styles.groupedWorkoutHeader}>
+                                      <Text style={[baseStyles.text, styles.groupName]}>
+                                        {exercise.name}
+                                      </Text>
+                                      <Text style={[baseStyles.text, styles.groupDuration]}>
+                                        {exercise.duration} min
+                                      </Text>
+                                    </View>
+                                    <Text style={[baseStyles.text, styles.paceType]}>
+                                      {exercise.pace ? exercise.pace.charAt(0).toUpperCase() + exercise.pace.slice(1).replace(/-/g, ' ') : ''}
+                                    </Text>
+                                  </>
+                                ) : isGroupedPostWorkout ? (
+                                  // Grouped post-workout display (strides)
+                                  <View style={styles.groupedWorkoutHeader}>
+                                    <Text style={[baseStyles.text, styles.groupName]}>
+                                      {exercise.name} - {exercise.group?.charAt(0).toUpperCase() + exercise.group?.slice(1)}
+                                    </Text>
+                                    <Text style={[baseStyles.text, styles.groupDuration]}>
+                                      {exercise.reps}
+                                    </Text>
+                                  </View>
+                                ) : exercise.reps && !exercise.sets && section.key === 'postworkout' ? (
+                                  // Stadiums display (reps only, no group)
+                                  <View style={styles.groupedWorkoutHeader}>
+                                    <Text style={[baseStyles.text, styles.groupName]}>
+                                      {exercise.name}
+                                    </Text>
+                                    <Text style={[baseStyles.text, styles.groupDuration]}>
+                                      {exercise.reps}
+                                    </Text>
+                                  </View>
+                                ) : (
+                                  // Regular exercise display
+                                  <>
+                                    <Text style={[baseStyles.text, styles.exerciseName]}>
+                                      {exercise.name}
+                                    </Text>
+                                    {exercise.duration && (
+                                      <Text style={[baseStyles.text, styles.exerciseSubHeader]}>
+                                        {Math.floor(exercise.duration / 60)}:{(exercise.duration % 60).toString().padStart(2, '0')}
+                                      </Text>
+                                    )}
+                                    <View style={styles.exerciseDetails}>
+                                      {exercise.reps && !exercise.sets && (
+                                        <Text style={[baseStyles.text, styles.exerciseDetail, { marginRight: 12 }]}>
+                                          {exercise.reps}
+                                        </Text>
+                                      )}
+                                      {exercise.sets && exercise.reps && (
+                                        <Text style={[baseStyles.text, styles.exerciseDetail, { marginRight: 12 }]}>
+                                          {exercise.sets} sets × {exercise.reps} reps
+                                        </Text>
+                                      )}
+                                      {exercise.weight && (
+                                        <Text style={[baseStyles.text, styles.exerciseDetail, { marginRight: 12 }]}>
+                                          {exercise.weight} lbs
+                                        </Text>
+                                      )}
+                                      {exercise.distance && (
+                                        <Text style={[baseStyles.text, styles.exerciseDetail]}>
+                                          {exercise.distance}m
+                                        </Text>
+                                      )}
+                                    </View>
+                                    {exercise.notes && (
+                                      <Text style={[baseStyles.text, styles.exerciseNotes]}>
+                                        {exercise.notes}
+                                      </Text>
+                                    )}
+                                  </>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </>
+                      )}
+                    </View>
+                  )
+                );
+              })}
             </View>
           );
         })
@@ -501,33 +689,73 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   exerciseSection: {
-    marginTop: 24,
+    marginTop: 32,
+  },
+  sectionHeader: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionHeaderTablet: {
+    padding: 20,
+    borderRadius: 12,
+  },
+  sectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 12,
-    color: Colors.primary,
+    color: Colors.white,
+    flex: 1,
   },
   sectionTitleTablet: {
-    fontSize: 24,
-    marginBottom: 16,
+    fontSize: 28,
+  },
+  sectionArrow: {
+    marginLeft: 12,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: Colors.neutralBackground,
+    marginBottom: 20,
+    marginTop: 4,
   },
   exerciseItem: {
-    marginBottom: 16,
-    paddingBottom: 16,
+    marginBottom: 20,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutralBackground,
+  },
+  exerciseItemLast: {
+    borderBottomWidth: 0,
+    marginBottom: 0,
+    paddingBottom: 0,
   },
   exerciseName: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 6,
     color: Colors.text,
+  },
+  exerciseSubHeader: {
+    fontSize: 16,
+    marginBottom: 12,
+    color: Colors.text,
+    opacity: 0.7,
   },
   exerciseDetails: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginTop: 4,
     marginBottom: 4,
   },
   exerciseDetail: {
@@ -541,6 +769,72 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     fontStyle: 'italic',
     marginTop: 4,
+  },
+  groupedWorkoutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  groupName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  groupDuration: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  paceType: {
+    fontSize: 16,
+    color: Colors.text,
+    opacity: 0.7,
+    fontStyle: 'italic',
+  },
+  stridesContainer: {
+    marginBottom: 16,
+  },
+  stridesHeader: {
+    padding: 12,
+    backgroundColor: Colors.neutralBackground,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  stridesHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stridesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  stridesContent: {
+    paddingLeft: 12,
+    paddingRight: 12,
+    paddingBottom: 8,
+  },
+  strideItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  strideGroup: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  strideCount: {
+    fontSize: 16,
+    color: Colors.primary,
+    fontWeight: '600',
   },
 });
 
