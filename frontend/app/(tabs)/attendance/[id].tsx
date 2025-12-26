@@ -1,17 +1,19 @@
-import { View, Text, StyleSheet, TouchableOpacity, Modal, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, baseStyles } from '../../../constants/styles';
-import { getAthleteById } from '../../../data/athletes';
-import { 
-  getAttendanceRecordsByDate, 
-  findOrCreateAttendanceRecord,
+import {
   deleteAttendanceRecord,
-  initializeAttendanceRecords 
-} from '../../../data/attendance';
+  findOrCreateAttendanceRecord,
+  getAthleteById,
+  getAthleteName,
+  getAttendanceRecordsByDate,
+  initializeAttendanceRecords
+} from '../../../data/athletes';
 import { Athlete } from '../../../data/types';
+import { normalizeDate } from '../../../utils/date';
 
 export default function AthleteCheckInScreen() {
   const router = useRouter();
@@ -27,8 +29,7 @@ export default function AthleteCheckInScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Get today's date
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = normalizeDate(new Date());
 
   useEffect(() => {
     const init = async () => {
@@ -57,7 +58,7 @@ export default function AthleteCheckInScreen() {
       await findOrCreateAttendanceRecord(id, today, 'present');
       // Ensure data is saved
       await initializeAttendanceRecords();
-      setModalMessage(`${athlete.name} - Checked In!`);
+      setModalMessage(`${athlete ? getAthleteName(athlete) : ''} - Checked In!`);
       setShowModal(true);
       setIsCheckedIn(true);
     } catch (error) {
@@ -115,7 +116,7 @@ export default function AthleteCheckInScreen() {
       {/* Athlete Name */}
       <View style={styles.nameContainer}>
         <Text style={[baseStyles.heading, styles.athleteName, isTablet && styles.athleteNameTablet]}>
-          {athlete.name}
+          {athlete ? getAthleteName(athlete) : ''}
         </Text>
       </View>
 

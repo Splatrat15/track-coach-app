@@ -5,13 +5,11 @@
 
 export interface Athlete {
   id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  team?: string;
-  position?: string;
-  gender?: 'male' | 'female';
-  rank?: 'rookie' | 'veteran' | 'varsity' | 'veteran/varsity'; // Dual rank for athletes who switch based on workout type
+  firstName: string;
+  lastName: string;
+  gender: 'male' | 'female';
+  rank: 'rookie' | 'veteran' | 'varsity' | 'veteran/varsity'; // Dual rank for athletes who switch based on workout type
+  goal1600m: string; // Goal mile time in MM:SS format (e.g., "4:20")
   createdAt: Date;
   updatedAt: Date;
 }

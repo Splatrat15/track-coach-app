@@ -3,16 +3,7 @@
  * Store and manage workout location/address information by date
  */
 
-// Helper function to get date key for consistent date comparison
-function getDateKey(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  // Use YYYY-MM-DD format to avoid timezone issues
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { getDateKey } from '../utils/date';
 
 // Location/address mapping by date
 const locationMap: { [key: string]: string } = {

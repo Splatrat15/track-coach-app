@@ -4,16 +4,7 @@
  */
 
 import { WorkoutTemplate, Exercise } from './types';
-
-// Helper function to get date key for consistent date comparison
-function getDateKey(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { getDateKey } from '../utils/date';
 
 // Static workout templates
 export const workoutTemplates: WorkoutTemplate[] = [

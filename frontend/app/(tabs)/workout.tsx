@@ -1,77 +1,130 @@
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity, Linking, Alert } from 'react-native';
-import { useState, useEffect, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
-import { getAllWorkouts } from '../../data/workouts';
-import { Workout, Exercise } from '../../data/types';
+import { getAllAthletes, getAthleteName, getEffectiveRank, initializeAthletes } from '../../data/athletes';
 import { getLocationForDate } from '../../data/locations';
-import { getTemplateById, getStretchTemplateIdForWorkoutType } from '../../data/workoutTemplates';
+import { Athlete, Exercise, Workout } from '../../data/types';
+import { getAllWorkouts } from '../../data/workouts';
+import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
+import { formatDate, getDateKey, isToday, normalizeDate } from '../../utils/date';
 
-// Helper function to check if a date is today
-function isToday(date: Date): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const compareDate = new Date(date);
-  compareDate.setHours(0, 0, 0, 0);
-  return today.getTime() === compareDate.getTime();
-}
+// Spreadsheet Component
+function SpreadsheetView({
+  workoutType,
+  selectedRank,
+  selectedGender,
+  onRankChange,
+  onGenderChange,
+  isTablet,
+}: {
+  workoutType?: 'workout' | 'longrun' | 'recovery';
+  selectedRank: 'rookie' | 'veteran' | 'varsity' | null;
+  selectedGender: 'male' | 'female' | null;
+  onRankChange: (rank: 'rookie' | 'veteran' | 'varsity' | null) => void;
+  onGenderChange: (gender: 'male' | 'female' | null) => void;
+  isTablet: boolean;
+}) {
+  const [athletes, setAthletes] = useState<Athlete[]>([]);
 
-// Helper function to get ordinal suffix (st, nd, rd, th)
-function getOrdinalSuffix(day: number): string {
-  if (day > 3 && day < 21) return 'th';
-  switch (day % 10) {
-    case 1: return 'st';
-    case 2: return 'nd';
-    case 3: return 'rd';
-    default: return 'th';
-  }
-}
+  useEffect(() => {
+    const load = async () => {
+      await initializeAthletes();
+      setAthletes(getAllAthletes());
+    };
+    load();
+  }, []);
 
-// Helper function to format date
-function formatDate(date: Date): string {
-  if (isToday(date)) {
-    return 'Today';
-  }
-  
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
-  
-  const compareDate = new Date(date);
-  compareDate.setHours(0, 0, 0, 0);
-  
-  if (compareDate.getTime() === tomorrow.getTime()) {
-    return 'Tomorrow';
-  }
-  
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(0, 0, 0, 0);
-  
-  if (compareDate.getTime() === yesterday.getTime()) {
-    return 'Yesterday';
-  }
-  
-  // Format as "Day of Week, Month Dayth" (e.g., "Monday, December 26th")
-  const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
-  const month = date.toLocaleDateString('en-US', { month: 'long' });
-  const day = date.getDate();
-  const ordinal = getOrdinalSuffix(day);
-  
-  return `${dayOfWeek}, ${month} ${day}${ordinal}`;
-}
+  const filteredAthletes = useMemo(() => {
+    if (!athletes || athletes.length === 0) return [];
+    
+    return athletes.filter(athlete => {
+      // Filter by rank
+      if (selectedRank) {
+        const rank = getEffectiveRank(athlete, workoutType);
+        if (!rank || rank !== selectedRank) {
+          return false;
+        }
+      }
+      
+      // Filter by gender
+      if (selectedGender) {
+        if (!athlete.gender || athlete.gender !== selectedGender) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [athletes, selectedRank, selectedGender, workoutType]);
 
-// Helper function to get date key for grouping
-function getDateKey(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  // Use YYYY-MM-DD format to avoid timezone issues
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return (
+    <View style={styles.spreadsheetContainer}>
+      {/* Filters */}
+      <View style={[styles.filtersContainer, isTablet && styles.filtersContainerTablet]}>
+        <View style={styles.filterGroup}>
+          <Text style={[baseStyles.text, styles.filterLabel]}>Rank:</Text>
+          {(['rookie', 'veteran', 'varsity'] as const).map(rank => (
+            <TouchableOpacity
+              key={rank}
+              onPress={() => onRankChange(selectedRank === rank ? null : rank)}
+              style={[
+                styles.filterButton,
+                selectedRank === rank && styles.filterButtonActive,
+                isTablet && styles.filterButtonTablet
+              ]}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                selectedRank === rank && styles.filterButtonTextActive
+              ]}>
+                {rank.charAt(0).toUpperCase() + rank.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.filterGroup}>
+          <Text style={[baseStyles.text, styles.filterLabel]}>Gender:</Text>
+          {(['male', 'female'] as const).map(gender => (
+            <TouchableOpacity
+              key={gender}
+              onPress={() => onGenderChange(selectedGender === gender ? null : gender)}
+              style={[
+                styles.filterButton,
+                selectedGender === gender && styles.filterButtonActive,
+                isTablet && styles.filterButtonTablet
+              ]}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                selectedGender === gender && styles.filterButtonTextActive
+              ]}>
+                {gender.charAt(0).toUpperCase() + gender.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Table */}
+      <View style={[styles.table, isTablet && styles.tableTablet]}>
+        <View style={[styles.tableHeader, isTablet && styles.tableHeaderTablet]}>
+          <Text style={[baseStyles.heading, styles.tableHeaderText, isTablet && styles.tableHeaderTextTablet]}>
+            Times
+          </Text>
+        </View>
+        {filteredAthletes.map(athlete => (
+          <View key={athlete.id} style={[styles.tableRow, isTablet && styles.tableRowTablet]}>
+            <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
+              {getAthleteName(athlete)}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 export default function WorkoutScreen() {
@@ -79,15 +132,20 @@ export default function WorkoutScreen() {
   const isTablet = width >= 768;
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
+    return normalizeDate(new Date());
   });
   // Track which sections are open/closed for each workout
   const [expandedSections, setExpandedSections] = useState<{ [workoutId: string]: { [sectionKey: string]: boolean } }>({});
+  // Spreadsheet filters
+  const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
+  const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
 
   useEffect(() => {
-    setWorkouts(getAllWorkouts());
+    const init = async () => {
+      await initializeAthletes();
+      setWorkouts(getAllWorkouts());
+    };
+    init();
   }, []);
 
   // Get workouts for selected date
@@ -102,21 +160,17 @@ export default function WorkoutScreen() {
   const goToPreviousDate = () => {
     const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
-    prevDate.setHours(0, 0, 0, 0);
-    setSelectedDate(prevDate);
+    setSelectedDate(normalizeDate(prevDate));
   };
 
   const goToNextDate = () => {
     const nextDate = new Date(selectedDate);
     nextDate.setDate(nextDate.getDate() + 1);
-    nextDate.setHours(0, 0, 0, 0);
-    setSelectedDate(nextDate);
+    setSelectedDate(normalizeDate(nextDate));
   };
 
   const goToToday = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    setSelectedDate(today);
+    setSelectedDate(normalizeDate(new Date()));
   };
 
   const openLocationInMaps = (address: string) => {
@@ -261,7 +315,7 @@ export default function WorkoutScreen() {
       {selectedDateWorkouts.length === 0 ? (
         <View style={[styles.card, isTablet && styles.cardTablet]}>
           <Text style={[baseStyles.text, styles.cardText]}>
-            No workouts scheduled for {formatDate(selectedDate).toLowerCase()}
+            No practice today
           </Text>
         </View>
       ) : (
@@ -324,6 +378,9 @@ export default function WorkoutScreen() {
             { title: 'Post-Workout', exercises: otherPostWorkoutExercises, key: 'postworkout', strides: strideExercises },
           ];
 
+          // Check if this is a spreadsheet workout type
+          const isSpreadsheet = workout.workoutType === 'workout';
+
           return (
             <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet]}>
               <Text style={[baseStyles.text, styles.cardTitle]}>
@@ -338,8 +395,9 @@ export default function WorkoutScreen() {
               {/* Exercise Sections */}
               {sections.map(section => {
                 const isExpanded = isSectionExpanded(workout.id, section.key);
+                const isWorkoutSection = section.key === 'workout';
                 return (
-                  section.exercises.length > 0 && (
+                  (section.exercises.length > 0 || (isWorkoutSection && isSpreadsheet)) && (
                     <View key={section.key} style={styles.exerciseSection}>
                       <TouchableOpacity
                         onPress={() => toggleSection(workout.id, section.key)}
@@ -361,6 +419,17 @@ export default function WorkoutScreen() {
                       {isExpanded && (
                         <>
                           <View style={styles.sectionDivider} />
+                          {/* Spreadsheet View for workout type - inside Workout section */}
+                          {isWorkoutSection && isSpreadsheet && (
+                            <SpreadsheetView
+                              workoutType={workout.workoutType}
+                              selectedRank={selectedRank}
+                              selectedGender={selectedGender}
+                              onRankChange={setSelectedRank}
+                              onGenderChange={setSelectedGender}
+                              isTablet={isTablet}
+                            />
+                          )}
                           {/* Strides dropdown for post-workout section */}
                           {section.key === 'postworkout' && section.strides && section.strides.length > 0 && (() => {
                             const stridesKey = `${workout.id}_strides`;
@@ -388,7 +457,7 @@ export default function WorkoutScreen() {
                                     {section.strides.map((stride, idx) => (
                                       <View key={stride.id || idx} style={styles.strideItem}>
                                         <Text style={[baseStyles.text, styles.strideGroup]}>
-                                          {stride.group?.charAt(0).toUpperCase() + stride.group?.slice(1)}:
+                                          {stride.group ? stride.group.charAt(0).toUpperCase() + stride.group.slice(1) : ''}:
                                         </Text>
                                         <Text style={[baseStyles.text, styles.strideCount]}>
                                           {stride.reps}
@@ -433,7 +502,7 @@ export default function WorkoutScreen() {
                                   // Grouped post-workout display (strides)
                                   <View style={styles.groupedWorkoutHeader}>
                                     <Text style={[baseStyles.text, styles.groupName]}>
-                                      {exercise.name} - {exercise.group?.charAt(0).toUpperCase() + exercise.group?.slice(1)}
+                                      {exercise.name} - {exercise.group ? exercise.group.charAt(0).toUpperCase() + exercise.group.slice(1) : ''}
                                     </Text>
                                     <Text style={[baseStyles.text, styles.groupDuration]}>
                                       {exercise.reps}
@@ -835,6 +904,92 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.primary,
     fontWeight: '600',
+  },
+  spreadsheetContainer: {
+    marginTop: 24,
+  },
+  filtersContainer: {
+    marginBottom: 16,
+    gap: 12,
+  },
+  filtersContainerTablet: {
+    marginBottom: 20,
+    gap: 16,
+  },
+  filterGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  filterButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+  },
+  filterButtonTablet: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  filterButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterButtonText: {
+    fontSize: 12,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  filterButtonTextActive: {
+    color: Colors.white,
+  },
+  table: {
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+  },
+  tableTablet: {
+    borderRadius: 12,
+  },
+  tableHeader: {
+    backgroundColor: Colors.primary,
+    padding: 12,
+  },
+  tableHeaderTablet: {
+    padding: 16,
+  },
+  tableHeaderText: {
+    fontSize: 16,
+    color: Colors.white,
+    fontWeight: 'bold',
+  },
+  tableHeaderTextTablet: {
+    fontSize: 18,
+  },
+  tableRow: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutralBackground,
+  },
+  tableRowTablet: {
+    padding: 16,
+  },
+  tableCell: {
+    fontSize: 14,
+  },
+  tableCellTablet: {
+    fontSize: 16,
   },
 });
 

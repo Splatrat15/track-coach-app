@@ -1,11 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity, Platform, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
-import { getAllAthletes, initializeAthletes, addAthlete, deleteAthlete } from '../../data/athletes';
-import { initializeAttendanceRecords, getAttendanceRecordsByDate } from '../../data/attendance';
+import { addAthlete, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
+import { normalizeDate } from '../../utils/date';
 
 export default function AttendanceScreen() {
   const router = useRouter();
@@ -46,9 +46,7 @@ export default function AttendanceScreen() {
 
   // Get today's date for checking attendance
   const today = useMemo(() => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
+    return normalizeDate(new Date());
   }, []);
 
   // Check if an athlete is checked in today
@@ -57,15 +55,8 @@ export default function AttendanceScreen() {
     return records.some(r => r.athleteId === athleteId && r.status === 'present');
   };
 
-  // Sort athletes by last name alphabetically
-  const sortedAthletes = useMemo(() => {
-    if (athletes.length === 0) return [];
-    return [...athletes].sort((a, b) => {
-      const aLastName = a.name.split(' ').pop() || '';
-      const bLastName = b.name.split(' ').pop() || '';
-      return aLastName.localeCompare(bLastName);
-    });
-  }, [athletes]);
+  // Athletes are already sorted by last name from the database
+  const sortedAthletes = athletes;
 
   // Handle adding a new athlete
   const handleAddAthlete = async () => {
@@ -83,14 +74,20 @@ export default function AttendanceScreen() {
     }
     
     try {
-      await addAthlete({ name: `${firstName} ${lastName}` });
+      await addAthlete({ 
+        firstName, 
+        lastName: lastName || '', 
+        gender: 'male', // Default, can be updated later
+        rank: 'rookie', // Default, can be updated later
+        goal1600m: '0:00' // Default, can be updated later
+      });
       const updatedAthletes = getAllAthletes();
       setAthletes([...updatedAthletes]);
       setNewAthleteFirstName('');
       setNewAthleteLastName('');
       setIsAddMode(false);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add athlete');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add athlete');
     }
   };
 
@@ -180,43 +177,49 @@ export default function AttendanceScreen() {
             Athletes ({sortedAthletes.length})
           </Text>
 
-          {sortedAthletes.map((athlete) => {
-            return (
-              <TouchableOpacity
-                key={athlete.id}
-                onPress={() => handleAthletePress(athlete.id)}
-                style={[styles.athleteRow, isTablet && styles.athleteRowTablet]}
-                activeOpacity={0.7}
-              >
-                <View style={styles.athleteNameContainer}>
-                  {isRemoveMode && (
-                    <TouchableOpacity
-                      onPress={() => handleRemoveAthlete(athlete.id, athlete.name)}
-                      style={styles.removeIconButton}
-                    >
-                      <Ionicons name="close-circle" size={isTablet ? 28 : 24} color="#EF4444" />
-                    </TouchableOpacity>
-                  )}
-                  <Text style={[baseStyles.text, styles.athleteName, isTablet && styles.athleteNameTablet]}>
-                    {athlete.name}
-                  </Text>
-                </View>
-                {!isRemoveMode && (
-                  <View style={styles.iconsContainer}>
-                    {isAthleteCheckedIn(athlete.id) && (
-                      <Ionicons 
-                        name="checkmark-circle" 
-                        size={isTablet ? 24 : 20} 
-                        color={Colors.secondary} 
-                        style={styles.checkmarkIcon}
-                      />
+          {sortedAthletes.length === 0 ? (
+            <Text style={[baseStyles.text, styles.emptyText, isTablet && styles.emptyTextTablet]}>
+              No athletes yet. Add your first athlete below.
+            </Text>
+          ) : (
+            sortedAthletes.map((athlete) => {
+              return (
+                <TouchableOpacity
+                  key={athlete.id}
+                  onPress={() => handleAthletePress(athlete.id)}
+                  style={[styles.athleteRow, isTablet && styles.athleteRowTablet]}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.athleteNameContainer}>
+                    {isRemoveMode && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveAthlete(athlete.id, getAthleteName(athlete))}
+                        style={styles.removeIconButton}
+                      >
+                        <Ionicons name="close-circle" size={isTablet ? 28 : 24} color="#EF4444" />
+                      </TouchableOpacity>
                     )}
-                    <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={Colors.text} />
+                    <Text style={[baseStyles.text, styles.athleteName, isTablet && styles.athleteNameTablet]}>
+                      {getAthleteName(athlete)}
+                    </Text>
                   </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
+                  {!isRemoveMode && (
+                    <View style={styles.iconsContainer}>
+                      {isAthleteCheckedIn(athlete.id) && (
+                        <Ionicons 
+                          name="checkmark-circle" 
+                          size={isTablet ? 24 : 20} 
+                          color={Colors.secondary} 
+                          style={styles.checkmarkIcon}
+                        />
+                      )}
+                      <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={Colors.text} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
 
           {/* Add/Remove Buttons at Bottom */}
           <View style={[styles.athletesFooter, isTablet && styles.athletesFooterTablet]}>
@@ -491,5 +494,15 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
+  },
+  emptyText: {
+    fontSize: 16,
+    opacity: 0.7,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  emptyTextTablet: {
+    fontSize: 20,
+    paddingVertical: 24,
   },
 });

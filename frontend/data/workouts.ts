@@ -4,13 +4,13 @@
  */
 
 import { Workout, Exercise } from './types';
+import { normalizeDate } from '../utils/date';
 
 // Sample workouts data - replace with your actual data source
 // Helper function to create a normalized date (midnight local time)
 function createDate(year: number, month: number, day: number): Date {
   const date = new Date(year, month - 1, day);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return normalizeDate(date);
 }
 
 export const workouts: Workout[] = [
@@ -91,7 +91,7 @@ export const workouts: Workout[] = [
     id: 'workout_dec_26_2025',
     name: 'Workout',
     date: createDate(2025, 12, 26),
-    workoutType: 'recovery',
+    workoutType: 'workout',
     exercises: [],
     athleteIds: [],
     createdAt: createDate(2025, 12, 26),
