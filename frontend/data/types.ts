@@ -10,6 +10,8 @@ export interface Athlete {
   phone?: string;
   team?: string;
   position?: string;
+  gender?: 'male' | 'female';
+  rank?: 'rookie' | 'veteran' | 'varsity' | 'veteran/varsity'; // Dual rank for athletes who switch based on workout type
   createdAt: Date;
   updatedAt: Date;
 }

@@ -55,21 +55,21 @@ export async function initializeAthletes(): Promise<void> {
     } else {
       // Default athletes if none exist
       athletes = [
-        { id: 'athlete_1', name: 'Robert Thiel', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_2', name: 'Jesse Hancock', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_3', name: "La'a Hancock", createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_4', name: 'Bailey Orr', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_5', name: 'Bethany Yaso', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_6', name: 'Lydia Leeman', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_7', name: 'Ben Leeman', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_8', name: 'Jocelyn Prather', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_9', name: 'Carter Frisk', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_10', name: 'Evelyn Shearer', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_11', name: 'Kendyl Taylor', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_12', name: 'Caleb Wheeler', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_13', name: 'Luke Littlefield', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_14', name: 'Ethan Magaron', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_15', name: 'Nicolette Magaron', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_1', name: 'Carter', gender: 'male', rank: 'veteran', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_2', name: 'Jesse Hancock', gender: 'male', rank: 'veteran', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_3', name: "La'a Hancock", gender: 'male', rank: 'varsity', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_4', name: 'Lydia Leeman', gender: 'female', rank: 'varsity', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_5', name: 'Ben Leeman', gender: 'male', rank: 'veteran', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_6', name: 'Luke', gender: 'male', rank: 'varsity', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_7', name: 'Ethan', gender: 'male', rank: 'rookie', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_8', name: 'Nicolette', gender: 'female', rank: 'veteran', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_9', name: 'Bailey', gender: 'female', rank: 'veteran/varsity', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_10', name: 'Jocelyn', gender: 'female', rank: 'veteran/varsity', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_11', name: 'Evelyn', gender: 'female', rank: 'rookie', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_12', name: 'Peyton', gender: 'female', rank: 'veteran', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_13', name: 'Robert', gender: 'male', rank: 'varsity', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_14', name: 'Caleb', gender: 'male', rank: 'veteran', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'athlete_15', name: 'Bethany', gender: 'female', rank: 'varsity', createdAt: new Date(), updatedAt: new Date() },
       ];
       await saveAthletes();
     }
@@ -96,6 +96,42 @@ export function getAthleteById(id: string): Athlete | undefined {
  */
 export function getAthletesByTeam(team: string): Athlete[] {
   return athletes.filter(athlete => athlete.team === team);
+}
+
+/**
+ * Get effective rank for an athlete based on workout type
+ * For dual-rank athletes (veteran/varsity):
+ * - 'workout' days: use 'varsity'
+ * - 'longrun' or 'recovery' days: use 'veteran'
+ */
+export function getEffectiveRank(athlete: Athlete, workoutType?: 'workout' | 'longrun' | 'recovery'): 'rookie' | 'veteran' | 'varsity' | undefined {
+  if (!athlete.rank) return undefined;
+  
+  if (athlete.rank === 'veteran/varsity') {
+    // For workout days (spreadsheet days), use varsity
+    // For long run or recovery days, use veteran
+    if (workoutType === 'workout') {
+      return 'varsity';
+    } else {
+      return 'veteran';
+    }
+  }
+  
+  return athlete.rank as 'rookie' | 'veteran' | 'varsity';
+}
+
+/**
+ * Get athletes by rank (considering workout type for dual-rank athletes)
+ */
+export function getAthletesByRank(rank: 'rookie' | 'veteran' | 'varsity', workoutType?: 'workout' | 'longrun' | 'recovery'): Athlete[] {
+  return athletes.filter(athlete => getEffectiveRank(athlete, workoutType) === rank);
+}
+
+/**
+ * Get athletes by gender
+ */
+export function getAthletesByGender(gender: 'male' | 'female'): Athlete[] {
+  return athletes.filter(athlete => athlete.gender === gender);
 }
 
 /**
