@@ -164,6 +164,118 @@ The main goal is **automation** to make the track coach's job easier:
 - Use Ionicons from `@expo/vector-icons`
 - Maintain consistent icon sizes (20px mobile, 24px tablet for standard icons)
 
+### Responsive Design Guidelines
+
+**⚠️ CRITICAL: The app must look good on ALL device sizes - phones AND tablets**
+
+While the primary focus is iPad usage, the app will be used on phones and must be fully responsive.
+
+#### Breakpoint Strategy
+- **Mobile/Phone**: Width < 768px
+- **Tablet/iPad**: Width >= 768px
+- Use `useWindowDimensions()` hook to detect screen size
+- Check `isTablet` boolean before applying tablet-specific styles
+
+#### Responsive Design Rules
+
+1. **Layout & Spacing**
+   - **Mobile**: Compact padding (12-16px), smaller margins
+   - **Tablet**: Generous padding (20-32px), larger margins
+   - Always provide both mobile and tablet style variants
+   - Use conditional styling: `[baseStyle, isTablet && tabletStyle]`
+
+2. **Typography Scaling**
+   - **Mobile**: Base font sizes (14-18px for body, 20-24px for headings)
+   - **Tablet**: Larger font sizes (16-20px for body, 28-36px for headings)
+   - Use letter spacing adjustments for larger screens
+   - Maintain readability on all sizes
+
+3. **Button & Interactive Elements**
+   - **Mobile**: Smaller touch targets (min 44x44px), compact padding
+   - **Tablet**: Larger touch targets, more generous padding
+   - Ensure buttons don't wrap awkwardly on small screens
+   - Use `flexWrap: 'wrap'` with proper margins to prevent overlap
+   - Add `marginBottom` to wrapped elements to prevent crowding
+
+4. **Filter Buttons & Chips**
+   - **Mobile**: Compact buttons (12px horizontal padding, 8px vertical)
+   - **Tablet**: Larger buttons (20px horizontal padding, 12px vertical)
+   - Use `minWidth` to ensure consistent button sizes
+   - Add `marginBottom` to allow wrapping without overlap
+   - Reduce font size on mobile if needed to fit content
+
+5. **Cards & Containers**
+   - **Mobile**: Smaller border radius (12-14px), compact padding
+   - **Tablet**: Larger border radius (16-20px), generous padding
+   - Ensure cards don't overflow on small screens
+   - Use responsive shadow/elevation values
+
+6. **Tables & Lists**
+   - **Mobile**: Compact row padding (12-14px), smaller fonts
+   - **Tablet**: Generous row padding (16-20px), larger fonts
+   - Ensure table cells don't overflow
+   - Use responsive column widths
+
+7. **Section Headers**
+   - **Mobile**: Smaller padding (16-18px), compact font sizes
+   - **Tablet**: Larger padding (20-24px), bigger font sizes
+   - Maintain visual hierarchy on all sizes
+
+8. **Navigation Elements**
+   - **Mobile**: Compact navigation bars, smaller icons
+   - **Tablet**: Larger navigation elements, bigger icons
+   - Ensure date pickers and navigation controls are touch-friendly
+
+#### Testing Checklist
+
+Before considering a feature complete, test on:
+- [ ] Small phone (iPhone SE, ~375px width)
+- [ ] Standard phone (iPhone 14, ~390px width)
+- [ ] Large phone (iPhone 14 Pro Max, ~430px width)
+- [ ] Small tablet (iPad Mini, ~768px width)
+- [ ] Standard tablet (iPad, ~810px width)
+- [ ] Large tablet (iPad Pro, ~1024px+ width)
+
+#### Common Responsive Issues to Avoid
+
+1. **Text Overflow**: Ensure text doesn't overflow containers on small screens
+2. **Button Wrapping**: Prevent buttons from wrapping awkwardly - use compact sizes and proper margins
+3. **Touch Target Size**: Maintain minimum 44x44px touch targets on mobile
+4. **Content Crowding**: Add proper spacing between elements that wrap
+5. **Horizontal Scrolling**: Avoid horizontal scrolling unless intentional
+6. **Filter Button Overlap**: Use `marginBottom` on filter buttons to prevent overlap when wrapping
+   - **Fixed in Spreadsheet.tsx**: Added `marginBottom: 6` to filter buttons and reduced padding/margins on mobile
+   - Use `minWidth` to ensure consistent button sizing
+   - Reduce font size on mobile (13px vs 14px) to fit content better
+7. **Label Alignment**: Ensure labels align properly when buttons wrap to new lines
+
+#### Responsive Style Pattern
+
+Always follow this pattern:
+```typescript
+const styles = StyleSheet.create({
+  baseStyle: {
+    // Mobile styles (default)
+    padding: 12,
+    fontSize: 14,
+  },
+  baseStyleTablet: {
+    // Tablet overrides
+    padding: 20,
+    fontSize: 18,
+  },
+});
+
+// Usage in component
+<View style={[styles.baseStyle, isTablet && styles.baseStyleTablet]}>
+```
+
+#### Key Responsive Utilities
+
+- `useWindowDimensions()` - Get current screen dimensions
+- `isTablet = width >= 768` - Standard breakpoint check
+- Conditional styling with array syntax: `[base, condition && override]`
+
 ---
 
 ## ⚠️ IMPORTANT REMINDERS

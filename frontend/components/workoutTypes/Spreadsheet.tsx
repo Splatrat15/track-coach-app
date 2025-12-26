@@ -90,7 +90,7 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
     <View style={styles.spreadsheetContainer}>
       {/* Filters */}
       <View style={[styles.filtersContainer, isTablet && styles.filtersContainerTablet]}>
-        <View style={styles.filterGroup}>
+        <View style={[styles.filterGroup, isTablet && styles.filterGroupTablet]}>
           <Text style={[baseStyles.text, styles.filterLabel]}>Rank:</Text>
           {(['rookie', 'veteran', 'varsity'] as const).map(rank => (
             <TouchableOpacity
@@ -112,7 +112,7 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
           ))}
         </View>
 
-        <View style={styles.filterGroup}>
+        <View style={[styles.filterGroup, isTablet && styles.filterGroupTablet]}>
           <Text style={[baseStyles.text, styles.filterLabel]}>Gender:</Text>
           {(['male', 'female'] as const).map(gender => (
             <TouchableOpacity
@@ -164,90 +164,123 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
 
 const styles = StyleSheet.create({
   spreadsheetContainer: {
-    marginTop: 24,
+    marginTop: 8,
   },
   filtersContainer: {
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: 20,
   },
   filtersContainerTablet: {
-    marginBottom: 20,
-    gap: 16,
+    marginBottom: 24,
   },
   filterGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 8,
+    marginBottom: 12,
+  },
+  filterGroupTablet: {
+    marginBottom: 16,
   },
   filterLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    marginRight: 8,
+    fontWeight: '700',
+    marginRight: 10,
+    color: Colors.text,
+    letterSpacing: -0.2,
+    minWidth: 50,
   },
   filterButton: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.neutralBackground,
-  },
-  filterButtonTablet: {
-    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.neutralBackground,
+    marginRight: 6,
+    marginBottom: 6,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  filterButtonTablet: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginRight: 10,
+    marginBottom: 0,
+    minWidth: 90,
   },
   filterButtonActive: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
   },
   filterButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
   filterButtonTextActive: {
     color: Colors.white,
+    fontWeight: '700',
   },
   table: {
     backgroundColor: Colors.white,
-    borderRadius: 8,
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.neutralBackground,
+    borderColor: 'rgba(30, 58, 95, 0.1)',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
   },
   tableTablet: {
-    borderRadius: 12,
+    borderRadius: 16,
   },
   tableHeader: {
     backgroundColor: Colors.primary,
-    padding: 12,
+    padding: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   tableHeaderTablet: {
-    padding: 16,
+    padding: 20,
   },
   tableHeaderText: {
-    fontSize: 16,
+    fontSize: 18,
     color: Colors.white,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   tableHeaderTextTablet: {
-    fontSize: 18,
+    fontSize: 20,
   },
   tableRow: {
-    padding: 12,
-    borderBottomWidth: 1,
+    padding: 16,
+    borderBottomWidth: 1.5,
     borderBottomColor: Colors.neutralBackground,
   },
   tableRowTablet: {
-    padding: 16,
+    padding: 18,
   },
   tableCell: {
-    fontSize: 14,
+    fontSize: 15,
+    color: Colors.text,
+    fontWeight: '500',
+    letterSpacing: -0.1,
   },
   tableCellTablet: {
-    fontSize: 16,
+    fontSize: 17,
   },
 });
 
