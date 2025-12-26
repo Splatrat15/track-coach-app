@@ -11,6 +11,25 @@ const STORAGE_KEY = '@athletes';
 const ATTENDANCE_STORAGE_KEY = '@attendance_records';
 const LAST_RESET_DATE_KEY = '@attendance_last_reset_date';
 
+// Default athletes data
+const DEFAULT_ATHLETES: Omit<Athlete, 'createdAt' | 'updatedAt'>[] = [
+  { id: 'athlete_1', firstName: 'Carter', lastName: 'Frisk', gender: 'male', rank: 'veteran', goal1600m: '4:20' },
+  { id: 'athlete_2', firstName: 'Jesse', lastName: 'Hancock', gender: 'male', rank: 'veteran', goal1600m: '5:08' },
+  { id: 'athlete_3', firstName: "La'a", lastName: 'Hancock', gender: 'male', rank: 'varsity', goal1600m: '4:13' },
+  { id: 'athlete_4', firstName: 'Lydia', lastName: 'Leeman', gender: 'female', rank: 'varsity', goal1600m: '6:07' },
+  { id: 'athlete_5', firstName: 'Ben', lastName: 'Leeman', gender: 'male', rank: 'veteran', goal1600m: '5:23' },
+  { id: 'athlete_6', firstName: 'Luke', lastName: 'Littlefield', gender: 'male', rank: 'varsity', goal1600m: '4:05' },
+  { id: 'athlete_7', firstName: 'Ethan', lastName: 'Magaron', gender: 'male', rank: 'rookie', goal1600m: '6:35' },
+  { id: 'athlete_8', firstName: 'Nicolette', lastName: 'Magaron', gender: 'female', rank: 'veteran', goal1600m: '6:40' },
+  { id: 'athlete_9', firstName: 'Bailey', lastName: 'Orr', gender: 'female', rank: 'veteran/varsity', goal1600m: '5:40' },
+  { id: 'athlete_10', firstName: 'Jocelyn', lastName: 'Prather', gender: 'female', rank: 'veteran/varsity', goal1600m: '5:35' },
+  { id: 'athlete_11', firstName: 'Evelyn', lastName: 'Shearer', gender: 'female', rank: 'rookie', goal1600m: '8:29' },
+  { id: 'athlete_12', firstName: 'Peyton', lastName: 'Starke', gender: 'female', rank: 'veteran', goal1600m: '7:36' },
+  { id: 'athlete_13', firstName: 'Robert', lastName: 'Thiel', gender: 'male', rank: 'varsity', goal1600m: '5:00' },
+  { id: 'athlete_14', firstName: 'Caleb', lastName: 'Wheeler', gender: 'male', rank: 'veteran', goal1600m: '5:29' },
+  { id: 'athlete_15', firstName: 'Bethany', lastName: 'Yaso', gender: 'female', rank: 'varsity', goal1600m: '6:29' },
+];
+
 // In-memory cache of athletes and attendance
 let athletes: Athlete[] = [];
 let attendanceRecords: AttendanceRecord[] = [];
@@ -33,8 +52,14 @@ async function loadAthletes(): Promise<Athlete[]> {
           athlete.firstName = nameParts[0] || '';
           athlete.lastName = nameParts.slice(1).join(' ') || '';
         }
+        // Explicitly map all fields to ensure nothing is lost
         return {
-          ...athlete,
+          id: athlete.id,
+          firstName: athlete.firstName || '',
+          lastName: athlete.lastName || '',
+          gender: athlete.gender || null,
+          rank: athlete.rank || null,
+          goal1600m: athlete.goal1600m || null,
           createdAt: new Date(athlete.createdAt),
           updatedAt: new Date(athlete.updatedAt),
         };
@@ -51,7 +76,12 @@ async function loadAthletes(): Promise<Athlete[]> {
  */
 async function saveAthletes(): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(athletes));
+    const dataToSave = JSON.stringify(athletes);
+    await AsyncStorage.setItem(STORAGE_KEY, dataToSave);
+    // Debug: log first athlete's gender to verify it's being saved
+    if (athletes.length > 0 && process.env.NODE_ENV === 'development') {
+      console.log('Saved athletes - First athlete gender:', athletes[0].gender);
+    }
   } catch (error) {
     console.error('Error saving athletes:', error);
   }
@@ -67,27 +97,57 @@ export async function initializeAthletes(): Promise<void> {
       athletes = sortAthletesByLastName(loaded);
     } else {
       // Default athletes if none exist
-      const defaultAthletes: Athlete[] = [
-        { id: 'athlete_1', firstName: 'Carter', lastName: 'Frisk', gender: 'male', rank: 'veteran', goal1600m: '4:20', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_2', firstName: 'Jesse', lastName: 'Hancock', gender: 'male', rank: 'veteran', goal1600m: '5:08', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_3', firstName: "La'a", lastName: 'Hancock', gender: 'male', rank: 'varsity', goal1600m: '4:13', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_4', firstName: 'Lydia', lastName: 'Leeman', gender: 'female', rank: 'varsity', goal1600m: '6:07', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_5', firstName: 'Ben', lastName: 'Leeman', gender: 'male', rank: 'veteran', goal1600m: '5:23', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_6', firstName: 'Luke', lastName: 'Littlefield', gender: 'male', rank: 'varsity', goal1600m: '4:05', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_7', firstName: 'Ethan', lastName: 'Magaron', gender: 'male', rank: 'rookie', goal1600m: '6:35', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_8', firstName: 'Nicolette', lastName: 'Magaron', gender: 'female', rank: 'veteran', goal1600m: '6:40', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_9', firstName: 'Bailey', lastName: 'Orr', gender: 'female', rank: 'veteran/varsity', goal1600m: '5:40', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_10', firstName: 'Jocelyn', lastName: 'Prather', gender: 'female', rank: 'veteran/varsity', goal1600m: '5:35', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_11', firstName: 'Evelyn', lastName: 'Shearer', gender: 'female', rank: 'rookie', goal1600m: '8:29', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_12', firstName: 'Peyton', lastName: 'Starke', gender: 'female', rank: 'veteran', goal1600m: '7:36', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_13', firstName: 'Robert', lastName: 'Thiel', gender: 'male', rank: 'varsity', goal1600m: '5:00', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_14', firstName: 'Caleb', lastName: 'Wheeler', gender: 'male', rank: 'veteran', goal1600m: '5:29', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'athlete_15', firstName: 'Bethany', lastName: 'Yaso', gender: 'female', rank: 'varsity', goal1600m: '6:29', createdAt: new Date(), updatedAt: new Date() },
-      ];
+      const defaultAthletes: Athlete[] = DEFAULT_ATHLETES.map(athlete => ({
+        ...athlete,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
       athletes = sortAthletesByLastName(defaultAthletes);
       await saveAthletes();
     }
     isLoaded = true;
+  }
+}
+
+/**
+ * Clear all AsyncStorage data and reset to defaults
+ * Use this to reset the app data to match the current code
+ */
+export async function clearAllStorage(): Promise<void> {
+  try {
+    // Clear all storage keys
+    await AsyncStorage.multiRemove([
+      STORAGE_KEY,
+      ATTENDANCE_STORAGE_KEY,
+      LAST_RESET_DATE_KEY,
+    ]);
+    
+    // Reset in-memory cache
+    athletes = [];
+    attendanceRecords = [];
+    isLoaded = false;
+    attendanceLoaded = false;
+    
+    // Force reinitialize with default data by directly setting defaults
+    const defaultAthletes: Athlete[] = DEFAULT_ATHLETES.map(athlete => ({
+      ...athlete,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+    athletes = sortAthletesByLastName(defaultAthletes);
+    await saveAthletes();
+    isLoaded = true;
+    
+    // Reinitialize attendance
+    await initializeAttendanceRecords();
+    
+    console.log('Storage cleared and reset to defaults');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('First athlete after reset:', athletes[0]?.firstName, athletes[0]?.gender);
+    }
+  } catch (error) {
+    console.error('Error clearing storage:', error);
+    throw error;
   }
 }
 

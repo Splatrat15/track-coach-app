@@ -18,7 +18,7 @@ export const workouts: Workout[] = [
     id: 'workout_dec_24_2025',
     name: 'Workout',
     date: createDate(2025, 12, 24),
-    workoutType: 'workout',
+    workoutType: 'longrun',
     exercises: [
       {
         id: 'workout_rookies',

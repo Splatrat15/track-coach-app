@@ -2,130 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import LongRun from '../../components/workoutTypes/LongRun';
+import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
-import { getAllAthletes, getAthleteName, getEffectiveRank, initializeAthletes } from '../../data/athletes';
+import { initializeAthletes } from '../../data/athletes';
 import { getLocationForDate } from '../../data/locations';
-import { Athlete, Exercise, Workout } from '../../data/types';
+import { Exercise, Workout } from '../../data/types';
 import { getAllWorkouts } from '../../data/workouts';
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
 import { formatDate, getDateKey, isToday, normalizeDate } from '../../utils/date';
-
-// Spreadsheet Component
-function SpreadsheetView({
-  workoutType,
-  selectedRank,
-  selectedGender,
-  onRankChange,
-  onGenderChange,
-  isTablet,
-}: {
-  workoutType?: 'workout' | 'longrun' | 'recovery';
-  selectedRank: 'rookie' | 'veteran' | 'varsity' | null;
-  selectedGender: 'male' | 'female' | null;
-  onRankChange: (rank: 'rookie' | 'veteran' | 'varsity' | null) => void;
-  onGenderChange: (gender: 'male' | 'female' | null) => void;
-  isTablet: boolean;
-}) {
-  const [athletes, setAthletes] = useState<Athlete[]>([]);
-
-  useEffect(() => {
-    const load = async () => {
-      await initializeAthletes();
-      setAthletes(getAllAthletes());
-    };
-    load();
-  }, []);
-
-  const filteredAthletes = useMemo(() => {
-    if (!athletes || athletes.length === 0) return [];
-    
-    return athletes.filter(athlete => {
-      // Filter by rank
-      if (selectedRank) {
-        const rank = getEffectiveRank(athlete, workoutType);
-        if (!rank || rank !== selectedRank) {
-          return false;
-        }
-      }
-      
-      // Filter by gender
-      if (selectedGender) {
-        if (!athlete.gender || athlete.gender !== selectedGender) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  }, [athletes, selectedRank, selectedGender, workoutType]);
-
-  return (
-    <View style={styles.spreadsheetContainer}>
-      {/* Filters */}
-      <View style={[styles.filtersContainer, isTablet && styles.filtersContainerTablet]}>
-        <View style={styles.filterGroup}>
-          <Text style={[baseStyles.text, styles.filterLabel]}>Rank:</Text>
-          {(['rookie', 'veteran', 'varsity'] as const).map(rank => (
-            <TouchableOpacity
-              key={rank}
-              onPress={() => onRankChange(selectedRank === rank ? null : rank)}
-              style={[
-                styles.filterButton,
-                selectedRank === rank && styles.filterButtonActive,
-                isTablet && styles.filterButtonTablet
-              ]}
-            >
-              <Text style={[
-                styles.filterButtonText,
-                selectedRank === rank && styles.filterButtonTextActive
-              ]}>
-                {rank.charAt(0).toUpperCase() + rank.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.filterGroup}>
-          <Text style={[baseStyles.text, styles.filterLabel]}>Gender:</Text>
-          {(['male', 'female'] as const).map(gender => (
-            <TouchableOpacity
-              key={gender}
-              onPress={() => onGenderChange(selectedGender === gender ? null : gender)}
-              style={[
-                styles.filterButton,
-                selectedGender === gender && styles.filterButtonActive,
-                isTablet && styles.filterButtonTablet
-              ]}
-            >
-              <Text style={[
-                styles.filterButtonText,
-                selectedGender === gender && styles.filterButtonTextActive
-              ]}>
-                {gender.charAt(0).toUpperCase() + gender.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Table */}
-      <View style={[styles.table, isTablet && styles.tableTablet]}>
-        <View style={[styles.tableHeader, isTablet && styles.tableHeaderTablet]}>
-          <Text style={[baseStyles.heading, styles.tableHeaderText, isTablet && styles.tableHeaderTextTablet]}>
-            Times
-          </Text>
-        </View>
-        {filteredAthletes.map(athlete => (
-          <View key={athlete.id} style={[styles.tableRow, isTablet && styles.tableRowTablet]}>
-            <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
-              {getAthleteName(athlete)}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
 
 export default function WorkoutScreen() {
   const { width } = useWindowDimensions();
@@ -136,9 +21,6 @@ export default function WorkoutScreen() {
   });
   // Track which sections are open/closed for each workout
   const [expandedSections, setExpandedSections] = useState<{ [workoutId: string]: { [sectionKey: string]: boolean } }>({});
-  // Spreadsheet filters
-  const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
-  const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -198,19 +80,23 @@ export default function WorkoutScreen() {
     }
   };
 
-  const toggleSection = (workoutId: string, sectionKey: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [workoutId]: {
-        ...prev[workoutId],
-        [sectionKey]: !prev[workoutId]?.[sectionKey],
-      },
-    }));
-  };
-
   const isSectionExpanded = (workoutId: string, sectionKey: string): boolean => {
     // Default to expanded (true) if not set
     return expandedSections[workoutId]?.[sectionKey] !== false;
+  };
+
+  const toggleSection = (workoutId: string, sectionKey: string) => {
+    setExpandedSections(prev => {
+      // Use the same logic as isSectionExpanded to determine current state
+      const currentExpanded = prev[workoutId]?.[sectionKey] !== false;
+      return {
+        ...prev,
+        [workoutId]: {
+          ...prev[workoutId],
+          [sectionKey]: !currentExpanded,
+        },
+      };
+    });
   };
 
 
@@ -378,8 +264,10 @@ export default function WorkoutScreen() {
             { title: 'Post-Workout', exercises: otherPostWorkoutExercises, key: 'postworkout', strides: strideExercises },
           ];
 
-          // Check if this is a spreadsheet workout type
+          // Check workout type for displaying appropriate component
+          // Spreadsheet ONLY shows for 'workout' type, LongRun ONLY for 'longrun' type
           const isSpreadsheet = workout.workoutType === 'workout';
+          const isLongRun = workout.workoutType === 'longrun';
 
           return (
             <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet]}>
@@ -396,8 +284,20 @@ export default function WorkoutScreen() {
               {sections.map(section => {
                 const isExpanded = isSectionExpanded(workout.id, section.key);
                 const isWorkoutSection = section.key === 'workout';
+                
+                // For workout section: show section if there are exercises OR if it's a spreadsheet/longrun type
+                // But don't show regular exercises if it's spreadsheet or longrun type
+                const shouldShowSection = isWorkoutSection 
+                  ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun) || isSpreadsheet || isLongRun
+                  : section.exercises.length > 0;
+                
+                // For workout section with spreadsheet/longrun: don't show regular exercises
+                const shouldShowRegularExercises = isWorkoutSection 
+                  ? !isSpreadsheet && !isLongRun && section.exercises.length > 0
+                  : section.exercises.length > 0;
+                
                 return (
-                  (section.exercises.length > 0 || (isWorkoutSection && isSpreadsheet)) && (
+                  shouldShowSection && (
                     <View key={section.key} style={styles.exerciseSection}>
                       <TouchableOpacity
                         onPress={() => toggleSection(workout.id, section.key)}
@@ -419,15 +319,18 @@ export default function WorkoutScreen() {
                       {isExpanded && (
                         <>
                           <View style={styles.sectionDivider} />
-                          {/* Spreadsheet View for workout type - inside Workout section */}
-                          {isWorkoutSection && isSpreadsheet && (
-                            <SpreadsheetView
+                          {/* Spreadsheet View ONLY for 'workout' type - inside Workout section */}
+                          {isWorkoutSection && isSpreadsheet && !isLongRun && (
+                            <Spreadsheet
                               workoutType={workout.workoutType}
-                              selectedRank={selectedRank}
-                              selectedGender={selectedGender}
-                              onRankChange={setSelectedRank}
-                              onGenderChange={setSelectedGender}
                               isTablet={isTablet}
+                            />
+                          )}
+                          {/* Long Run View ONLY for 'longrun' type */}
+                          {isWorkoutSection && isLongRun && !isSpreadsheet && (
+                            <LongRun 
+                              isTablet={isTablet}
+                              exercises={workoutExercises}
                             />
                           )}
                           {/* Strides dropdown for post-workout section */}
@@ -469,7 +372,8 @@ export default function WorkoutScreen() {
                               </View>
                             );
                           })()}
-                          {section.exercises.map((exercise, index) => {
+                          {/* Only show regular exercises if NOT spreadsheet or longrun type */}
+                          {shouldShowRegularExercises && section.exercises.map((exercise, index) => {
                             // Check if this is a grouped workout exercise
                             const isGroupedWorkout = exercise.group && exercise.pace && section.key === 'workout';
                             // Check if this is a grouped post-workout exercise (strides)
@@ -904,92 +808,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.primary,
     fontWeight: '600',
-  },
-  spreadsheetContainer: {
-    marginTop: 24,
-  },
-  filtersContainer: {
-    marginBottom: 16,
-    gap: 12,
-  },
-  filtersContainerTablet: {
-    marginBottom: 20,
-    gap: 16,
-  },
-  filterGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginRight: 8,
-  },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.neutralBackground,
-  },
-  filterButtonTablet: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  filterButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterButtonText: {
-    fontSize: 12,
-    color: Colors.text,
-    fontWeight: '500',
-  },
-  filterButtonTextActive: {
-    color: Colors.white,
-  },
-  table: {
-    backgroundColor: Colors.white,
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.neutralBackground,
-  },
-  tableTablet: {
-    borderRadius: 12,
-  },
-  tableHeader: {
-    backgroundColor: Colors.primary,
-    padding: 12,
-  },
-  tableHeaderTablet: {
-    padding: 16,
-  },
-  tableHeaderText: {
-    fontSize: 16,
-    color: Colors.white,
-    fontWeight: 'bold',
-  },
-  tableHeaderTextTablet: {
-    fontSize: 18,
-  },
-  tableRow: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutralBackground,
-  },
-  tableRowTablet: {
-    padding: 16,
-  },
-  tableCell: {
-    fontSize: 14,
-  },
-  tableCellTablet: {
-    fontSize: 16,
   },
 });
 

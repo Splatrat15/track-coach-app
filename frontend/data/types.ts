@@ -7,9 +7,9 @@ export interface Athlete {
   id: string;
   firstName: string;
   lastName: string;
-  gender: 'male' | 'female';
-  rank: 'rookie' | 'veteran' | 'varsity' | 'veteran/varsity'; // Dual rank for athletes who switch based on workout type
-  goal1600m: string; // Goal mile time in MM:SS format (e.g., "4:20")
+  gender: 'male' | 'female' | null; // null means not set yet
+  rank: 'rookie' | 'veteran' | 'varsity' | 'veteran/varsity' | null; // null means not set yet
+  goal1600m: string | null; // Goal mile time in MM:SS format (e.g., "4:20"), null means not set yet
   createdAt: Date;
   updatedAt: Date;
 }
