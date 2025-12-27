@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
-    height: 86, // Slightly reduced height
+    height: 86.2, // Slightly reduced height
   },
   dataHeaderCell: {
     // Already set in headerCell
