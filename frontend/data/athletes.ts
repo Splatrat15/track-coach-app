@@ -307,6 +307,7 @@ async function loadAttendanceRecords(): Promise<AttendanceRecord[]> {
         ...record,
         date: new Date(record.date),
         createdAt: new Date(record.createdAt),
+        checkInTime: record.checkInTime ? new Date(record.checkInTime) : undefined,
       }));
     }
   } catch (error) {
@@ -454,13 +455,35 @@ export async function findOrCreateAttendanceRecord(
     return record.athleteId === athleteId && recordDateStr === dateStr;
   });
 
+  // Get current time and round to the second (remove milliseconds)
+  // We store the moment in time (as UTC), and convert to Arizona time when displaying
+  const now = new Date();
+  now.setMilliseconds(0);
+
   if (existing) {
-    return await updateAttendanceRecord(existing.id, { status }) || existing;
+    let checkInTime: Date | undefined;
+    
+    if (status === 'present') {
+      // If updating to 'present' and there's no existing checkInTime, set it now
+      // If already 'present', preserve the original checkInTime
+      checkInTime = existing.checkInTime || now;
+    } else {
+      // If changing from 'present' to another status, clear checkInTime
+      checkInTime = undefined;
+    }
+    
+    return await updateAttendanceRecord(existing.id, { 
+      status,
+      checkInTime,
+    }) || existing;
   } else {
+    // New record: set checkInTime if status is 'present'
+    const checkInTime = status === 'present' ? now : undefined;
     return await addAttendanceRecord({
       athleteId,
       date,
       status,
+      checkInTime,
     });
   }
 }

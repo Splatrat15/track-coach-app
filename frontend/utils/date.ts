@@ -83,3 +83,36 @@ export function formatDate(date: Date): string {
   return `${dayOfWeek}, ${month} ${day}${ordinal}`;
 }
 
+/**
+ * Get current time in Arizona timezone (MST, UTC-7)
+ * Arizona doesn't observe daylight saving time, so it's always UTC-7
+ * Returns a Date object that, when formatted, will show Arizona time
+ */
+export function getArizonaTime(): Date {
+  const now = new Date();
+  // Get UTC milliseconds
+  const utc = now.getTime();
+  // Convert to Arizona time (MST, UTC-7) by subtracting 7 hours
+  const arizonaOffsetMs = -7 * 60 * 60 * 1000; // UTC-7 in milliseconds
+  return new Date(utc + arizonaOffsetMs);
+}
+
+/**
+ * Format a time in military time (24-hour format) for Arizona timezone
+ * Arizona is always in Mountain Standard Time (MST, UTC-7) and doesn't observe DST
+ */
+export function formatTimeArizona(date: Date): string {
+  // date.getTime() returns UTC milliseconds
+  // Convert to Arizona time (MST, UTC-7) by subtracting 7 hours
+  const utc = date.getTime();
+  const arizonaOffsetMs = -7 * 60 * 60 * 1000; // UTC-7 in milliseconds
+  const arizonaTime = new Date(utc + arizonaOffsetMs);
+  
+  // Format in 24-hour format (HH:MM:SS)
+  const hours = String(arizonaTime.getUTCHours()).padStart(2, '0');
+  const minutes = String(arizonaTime.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(arizonaTime.getUTCSeconds()).padStart(2, '0');
+  
+  return `${hours}:${minutes}:${seconds}`;
+}
+

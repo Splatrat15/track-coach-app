@@ -54,6 +54,7 @@ export interface AttendanceRecord {
   date: Date;
   status: 'present' | 'absent' | 'tardy' | 'excused';
   notes?: string;
+  checkInTime?: Date; // Timestamp when athlete checked in (rounded to the second)
   createdAt: Date;
 }
 

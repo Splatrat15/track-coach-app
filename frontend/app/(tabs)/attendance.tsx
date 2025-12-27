@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
 import { addAthlete, clearAllStorage, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
@@ -16,6 +16,11 @@ export default function AttendanceScreen() {
   const [isAddMode, setIsAddMode] = useState(false);
   const [newAthleteFirstName, setNewAthleteFirstName] = useState('');
   const [newAthleteLastName, setNewAthleteLastName] = useState('');
+  const [newAthleteRank, setNewAthleteRank] = useState<'rookie' | 'veteran' | 'varsity' | 'veteran/varsity' | null>(null);
+  const [newAthleteGender, setNewAthleteGender] = useState<'male' | 'female' | null>(null);
+  const [newAthleteGoal1600m, setNewAthleteGoal1600m] = useState('');
+  const [showRankDropdown, setShowRankDropdown] = useState(false);
+  const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,10 +63,21 @@ export default function AttendanceScreen() {
   // Athletes are already sorted by last name from the database
   const sortedAthletes = athletes;
 
+  // Validate time format (M:SS or MM:SS, e.g., "6:03" or "06:03")
+  const validateTimeFormat = (time: string): boolean => {
+    const timeRegex = /^\d{1,2}:\d{2}$/;
+    if (!timeRegex.test(time)) {
+      return false;
+    }
+    const [minutes, seconds] = time.split(':').map(Number);
+    return minutes >= 0 && seconds >= 0 && seconds < 60;
+  };
+
   // Handle adding a new athlete
   const handleAddAthlete = async () => {
     const firstName = newAthleteFirstName.trim();
     const lastName = newAthleteLastName.trim();
+    const goal1600m = newAthleteGoal1600m.trim();
     
     if (!firstName) {
       Alert.alert('Error', 'Please enter a first name');
@@ -73,18 +89,41 @@ export default function AttendanceScreen() {
       return;
     }
     
+    if (!newAthleteGender) {
+      Alert.alert('Error', 'Please select a gender');
+      return;
+    }
+    
+    if (!newAthleteRank) {
+      Alert.alert('Error', 'Please select a rank');
+      return;
+    }
+    
+    if (!goal1600m) {
+      Alert.alert('Error', 'Please enter a Goal 1600m time');
+      return;
+    }
+    
+    if (!validateTimeFormat(goal1600m)) {
+      Alert.alert('Error', 'Please enter a valid time format (M:SS or MM:SS, e.g., 6:03)');
+      return;
+    }
+    
     try {
       await addAthlete({ 
         firstName, 
         lastName: lastName || '', 
-        gender: null, // Will not appear until set
-        rank: null, // Will not appear until set
-        goal1600m: null // Will not appear until set
+        gender: newAthleteGender,
+        rank: newAthleteRank,
+        goal1600m: goal1600m
       });
       const updatedAthletes = getAllAthletes();
       setAthletes([...updatedAthletes]);
       setNewAthleteFirstName('');
       setNewAthleteLastName('');
+      setNewAthleteRank(null);
+      setNewAthleteGender(null);
+      setNewAthleteGoal1600m('');
       setIsAddMode(false);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to add athlete');
@@ -283,6 +322,11 @@ export default function AttendanceScreen() {
                   setIsRemoveMode(false);
                   setNewAthleteFirstName('');
                   setNewAthleteLastName('');
+                  setNewAthleteRank(null);
+                  setNewAthleteGender(null);
+                  setNewAthleteGoal1600m('');
+                  setShowRankDropdown(false);
+                  setShowGenderDropdown(false);
                 }}
                 style={[styles.actionButton, styles.cancelButton, isTablet && styles.actionButtonTablet]}
               >
@@ -297,25 +341,65 @@ export default function AttendanceScreen() {
               ref={inputContainerRef}
               style={[styles.addAthleteContainer, isTablet && styles.addAthleteContainerTablet]}
             >
-              <View style={styles.nameInputsRow}>
+              <View style={styles.inputsColumn}>
+                <View style={styles.nameInputsRow}>
+                  <TextInput
+                    style={[styles.nameInput, styles.firstNameInput, isTablet && styles.nameInputTablet]}
+                    placeholder="First name *"
+                    placeholderTextColor={Colors.text}
+                    value={newAthleteFirstName}
+                    onChangeText={setNewAthleteFirstName}
+                    onFocus={handleInputFocus}
+                    autoFocus
+                  />
+                  <TextInput
+                    style={[styles.nameInput, styles.lastNameInput, isTablet && styles.nameInputTablet]}
+                    placeholder="Last name *"
+                    placeholderTextColor={Colors.text}
+                    value={newAthleteLastName}
+                    onChangeText={setNewAthleteLastName}
+                    onFocus={handleInputFocus}
+                  />
+                </View>
+                
+                <TouchableOpacity
+                  style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
+                  onPress={() => setShowGenderDropdown(true)}
+                >
+                  <Text style={[
+                    styles.dropdownButtonText,
+                    !newAthleteGender && styles.dropdownButtonTextPlaceholder,
+                    isTablet && styles.dropdownButtonTextTablet
+                  ]}>
+                    {newAthleteGender ? newAthleteGender.charAt(0).toUpperCase() + newAthleteGender.slice(1) : 'Gender *'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={Colors.text} />
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
+                  onPress={() => setShowRankDropdown(true)}
+                >
+                  <Text style={[
+                    styles.dropdownButtonText,
+                    !newAthleteRank && styles.dropdownButtonTextPlaceholder,
+                    isTablet && styles.dropdownButtonTextTablet
+                  ]}>
+                    {newAthleteRank ? newAthleteRank.charAt(0).toUpperCase() + newAthleteRank.slice(1).replace('/', '/') : 'Rank *'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={Colors.text} />
+                </TouchableOpacity>
+                
                 <TextInput
-                  style={[styles.nameInput, styles.firstNameInput, isTablet && styles.nameInputTablet]}
-                  placeholder="First name"
+                  style={[styles.nameInput, styles.goalInput, isTablet && styles.nameInputTablet]}
+                  placeholder="Goal 1600m (e.g., 6:03) *"
                   placeholderTextColor={Colors.text}
-                  value={newAthleteFirstName}
-                  onChangeText={setNewAthleteFirstName}
-                  onFocus={handleInputFocus}
-                  autoFocus
-                />
-                <TextInput
-                  style={[styles.nameInput, styles.lastNameInput, isTablet && styles.nameInputTablet]}
-                  placeholder="Last name"
-                  placeholderTextColor={Colors.text}
-                  value={newAthleteLastName}
-                  onChangeText={setNewAthleteLastName}
+                  value={newAthleteGoal1600m}
+                  onChangeText={setNewAthleteGoal1600m}
                   onFocus={handleInputFocus}
                 />
               </View>
+              
               <TouchableOpacity
                 onPress={handleAddAthlete}
                 style={[styles.submitButton, isTablet && styles.submitButtonTablet]}
@@ -324,6 +408,96 @@ export default function AttendanceScreen() {
               </TouchableOpacity>
             </View>
           )}
+          
+          {/* Gender Dropdown Modal */}
+          <Modal
+            visible={showGenderDropdown}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowGenderDropdown(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setShowGenderDropdown(false)}
+            >
+              <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+                <Text style={[baseStyles.text, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                  Select Gender
+                </Text>
+                {(['male', 'female'] as const).map((gender) => (
+                  <TouchableOpacity
+                    key={gender}
+                    style={[
+                      styles.modalOption,
+                      newAthleteGender === gender && styles.modalOptionSelected,
+                      isTablet && styles.modalOptionTablet
+                    ]}
+                    onPress={() => {
+                      setNewAthleteGender(gender);
+                      setShowGenderDropdown(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.modalOptionText,
+                      newAthleteGender === gender && styles.modalOptionTextSelected,
+                      isTablet && styles.modalOptionTextTablet
+                    ]}>
+                      {gender.charAt(0).toUpperCase() + gender.slice(1)}
+                    </Text>
+                    {newAthleteGender === gender && (
+                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={Colors.secondary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableOpacity>
+          </Modal>
+          
+          {/* Rank Dropdown Modal */}
+          <Modal
+            visible={showRankDropdown}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowRankDropdown(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setShowRankDropdown(false)}
+            >
+              <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+                <Text style={[baseStyles.text, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                  Select Rank
+                </Text>
+                {(['rookie', 'veteran', 'varsity', 'veteran/varsity'] as const).map((rank) => (
+                  <TouchableOpacity
+                    key={rank}
+                    style={[
+                      styles.modalOption,
+                      newAthleteRank === rank && styles.modalOptionSelected,
+                      isTablet && styles.modalOptionTablet
+                    ]}
+                    onPress={() => {
+                      setNewAthleteRank(rank);
+                      setShowRankDropdown(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.modalOptionText,
+                      newAthleteRank === rank && styles.modalOptionTextSelected,
+                      isTablet && styles.modalOptionTextTablet
+                    ]}>
+                      {rank.charAt(0).toUpperCase() + rank.slice(1).replace('/', '/')}
+                    </Text>
+                    {newAthleteRank === rank && (
+                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={Colors.secondary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableOpacity>
+          </Modal>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -493,8 +667,11 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 16,
   },
-  nameInputsRow: {
+  inputsColumn: {
     flex: 1,
+    gap: 8,
+  },
+  nameInputsRow: {
     flexDirection: 'row',
     gap: 8,
   },
@@ -542,5 +719,95 @@ const styles = StyleSheet.create({
   emptyTextTablet: {
     fontSize: 20,
     paddingVertical: 24,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: Colors.white,
+  },
+  dropdownButtonTablet: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+  dropdownButtonTextPlaceholder: {
+    opacity: 0.5,
+  },
+  dropdownButtonTextTablet: {
+    fontSize: 18,
+  },
+  goalInput: {
+    width: '100%',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    maxWidth: 400,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalContentTablet: {
+    padding: 32,
+    borderRadius: 16,
+    maxWidth: 500,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalTitleTablet: {
+    fontSize: 24,
+    marginBottom: 20,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: Colors.neutralBackground,
+  },
+  modalOptionSelected: {
+    backgroundColor: 'rgba(47, 111, 78, 0.2)', // Colors.secondary with 20% opacity
+  },
+  modalOptionTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+  modalOptionTextSelected: {
+    color: Colors.secondary,
+    fontWeight: '600',
+  },
+  modalOptionTextTablet: {
+    fontSize: 18,
   },
 });

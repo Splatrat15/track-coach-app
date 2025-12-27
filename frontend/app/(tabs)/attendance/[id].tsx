@@ -13,7 +13,7 @@ import {
   initializeAttendanceRecords
 } from '../../../data/athletes';
 import { Athlete } from '../../../data/types';
-import { normalizeDate } from '../../../utils/date';
+import { normalizeDate, formatTimeArizona } from '../../../utils/date';
 
 export default function AthleteCheckInScreen() {
   const router = useRouter();
@@ -24,6 +24,7 @@ export default function AthleteCheckInScreen() {
   
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [checkInTime, setCheckInTime] = useState<Date | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -44,6 +45,7 @@ export default function AthleteCheckInScreen() {
           const records = getAttendanceRecordsByDate(today);
           const todayRecord = records.find(r => r.athleteId === id && r.status === 'present');
           setIsCheckedIn(!!todayRecord);
+          setCheckInTime(todayRecord?.checkInTime || null);
         }
       }
       setIsLoading(false);
@@ -55,12 +57,13 @@ export default function AthleteCheckInScreen() {
     if (!athlete || !id) return;
     
     try {
-      await findOrCreateAttendanceRecord(id, today, 'present');
+      const record = await findOrCreateAttendanceRecord(id, today, 'present');
       // Ensure data is saved
       await initializeAttendanceRecords();
       setModalMessage(`${athlete ? getAthleteName(athlete) : ''} - Checked In!`);
       setShowModal(true);
       setIsCheckedIn(true);
+      setCheckInTime(record.checkInTime || null);
     } catch (error) {
       console.error('Error checking in:', error);
     }
@@ -75,6 +78,7 @@ export default function AthleteCheckInScreen() {
       if (todayRecord) {
         await deleteAttendanceRecord(todayRecord.id);
         setIsCheckedIn(false);
+        setCheckInTime(null);
         router.back();
       }
     } catch (error) {
@@ -145,6 +149,11 @@ export default function AthleteCheckInScreen() {
               (Undo)
             </Text>
           </TouchableOpacity>
+          {checkInTime && (
+            <Text style={[baseStyles.text, styles.checkInTime, isTablet && styles.checkInTimeTablet]}>
+              Checked in at {formatTimeArizona(checkInTime)}
+            </Text>
+          )}
         </View>
       )}
 
@@ -269,6 +278,17 @@ const styles = StyleSheet.create({
   },
   undoButtonTextTablet: {
     fontSize: 24,
+  },
+  checkInTime: {
+    fontSize: 16,
+    color: Colors.text,
+    opacity: 0.7,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  checkInTimeTablet: {
+    fontSize: 20,
+    marginTop: 20,
   },
   modalOverlay: {
     flex: 1,
