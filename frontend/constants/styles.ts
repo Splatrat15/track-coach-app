@@ -2,24 +2,47 @@ import { StyleSheet } from 'react-native';
 
 /**
  * Color Variables
- * Core 4 Colors for the Track Coach App
+ * Vibrant, energetic color palette for the Track Coach App
  */
 export const Colors = {
-  // Primary (Navy Blue) - Main app color, top bars, headers, primary buttons
-  primary: '#1E3A5F',
+  // Primary (Vibrant Blue) - Main app color, top bars, headers, primary buttons
+  primary: '#2563EB',
+  primaryLight: '#3B82F6',
+  primaryDark: '#1E40AF',
   
-  // Secondary (Forest Green) - "Present" status, success states
-  secondary: '#2F6F4E',
+  // Secondary (Energetic Green) - "Present" status, success states
+  secondary: '#10B981',
+  secondaryLight: '#34D399',
+  secondaryDark: '#059669',
   
-  // Neutral Background (Light Gray) - App background, tables & cards
-  neutralBackground: '#F4F6F8',
+  // Accent Colors
+  accent: '#F59E0B',
+  accentLight: '#FBBF24',
+  accentDark: '#D97706',
   
-  // Text / Contrast (Charcoal) - Primary text, icons
-  text: '#1F2933',
+  // Status Colors
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#3B82F6',
+  
+  // Neutral Background (Warm Light Gray) - App background, tables & cards
+  neutralBackground: '#F8FAFC',
+  neutralLight: '#F1F5F9',
+  neutralMedium: '#E2E8F0',
+  
+  // Text / Contrast
+  text: '#0F172A',
+  textLight: '#475569',
+  textMuted: '#94A3B8',
   
   // Additional common colors
   white: '#FFFFFF',
   black: '#000000',
+  
+  // Gradient Colors
+  gradientStart: '#2563EB',
+  gradientEnd: '#10B981',
 } as const;
 
 /**
