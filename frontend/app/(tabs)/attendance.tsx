@@ -21,6 +21,7 @@ export default function AttendanceScreen() {
   const [newAthleteGoal1600m, setNewAthleteGoal1600m] = useState('');
   const [showRankDropdown, setShowRankDropdown] = useState(false);
   const [showGenderDropdown, setShowGenderDropdown] = useState(false);
+  const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,8 +61,26 @@ export default function AttendanceScreen() {
     return records.some(r => r.athleteId === athleteId && r.status === 'present');
   };
 
+  // Filter athletes by gender if filter is selected
+  const filteredAthletes = useMemo(() => {
+    if (!selectedGender) {
+      return athletes;
+    }
+    return athletes.filter(athlete => athlete.gender === selectedGender);
+  }, [athletes, selectedGender]);
+
   // Athletes are already sorted by last name from the database
-  const sortedAthletes = athletes;
+  const sortedAthletes = filteredAthletes;
+
+  // Calculate present and absent counts
+  const attendanceCounts = useMemo(() => {
+    const records = getAttendanceRecordsByDate(today);
+    const present = sortedAthletes.filter(athlete => 
+      records.some(r => r.athleteId === athlete.id && r.status === 'present')
+    ).length;
+    const absent = sortedAthletes.length - present;
+    return { present, absent };
+  }, [sortedAthletes, today]);
 
   // Validate time format (M:SS or MM:SS, e.g., "6:03" or "06:03")
   const validateTimeFormat = (time: string): boolean => {
@@ -236,6 +255,45 @@ export default function AttendanceScreen() {
           <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
             Tap a name to check in
           </Text>
+        </View>
+
+        {/* Gender Filters */}
+        <View style={[styles.filtersContainer, isTablet && styles.filtersContainerTablet]}>
+          <View style={[styles.filterGroup, isTablet && styles.filterGroupTablet]}>
+            <Text style={[baseStyles.text, styles.filterLabel]}>Gender:</Text>
+            {(['male', 'female'] as const).map(gender => (
+              <TouchableOpacity
+                key={gender}
+                onPress={() => setSelectedGender(selectedGender === gender ? null : gender)}
+                style={[
+                  styles.filterButton,
+                  selectedGender === gender && styles.filterButtonActive,
+                  isTablet && styles.filterButtonTablet
+                ]}
+              >
+                <Text style={[
+                  styles.filterButtonText,
+                  selectedGender === gender && styles.filterButtonTextActive
+                ]}>
+                  {gender.charAt(0).toUpperCase() + gender.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          {/* Attendance Counters */}
+          <View style={[styles.countersContainer, isTablet && styles.countersContainerTablet]}>
+            <View style={[styles.counterBadge, styles.counterBadgePresent, isTablet && styles.counterBadgeTablet]}>
+              <Text style={[styles.counterText, isTablet && styles.counterTextTablet]}>
+                Here: {attendanceCounts.present}
+              </Text>
+            </View>
+            <View style={[styles.counterBadge, styles.counterBadgeAbsent, isTablet && styles.counterBadgeTablet]}>
+              <Text style={[styles.counterText, isTablet && styles.counterTextTablet]}>
+                Absent: {attendanceCounts.absent}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Athletes List */}
@@ -892,5 +950,117 @@ const styles = StyleSheet.create({
   },
   modalOptionTextTablet: {
     fontSize: 19,
+  },
+  filtersContainer: {
+    marginBottom: 20,
+    paddingHorizontal: 0,
+  },
+  filtersContainerTablet: {
+    marginBottom: 24,
+    paddingHorizontal: 0,
+  },
+  filterGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  filterGroupTablet: {
+    marginBottom: 16,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginRight: 10,
+    color: Colors.text,
+    letterSpacing: -0.2,
+    minWidth: 50,
+  },
+  filterButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.neutralBackground,
+    marginRight: 6,
+    marginBottom: 6,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  filterButtonTablet: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginRight: 10,
+    marginBottom: 0,
+    minWidth: 90,
+  },
+  filterButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  filterButtonText: {
+    fontSize: 13,
+    color: Colors.text,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  filterButtonTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  countersContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  countersContainerTablet: {
+    gap: 12,
+    marginTop: 12,
+  },
+  counterBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  counterBadgeTablet: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  counterBadgePresent: {
+    borderColor: Colors.secondary,
+    backgroundColor: Colors.secondaryLight + '15',
+  },
+  counterBadgeAbsent: {
+    borderColor: Colors.error,
+    backgroundColor: Colors.error + '15',
+  },
+  counterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.text,
+    letterSpacing: 0.1,
+  },
+  counterTextTablet: {
+    fontSize: 14,
   },
 });

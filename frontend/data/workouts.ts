@@ -97,6 +97,26 @@ export const workouts: Workout[] = [
     createdAt: createDate(2025, 12, 26),
     updatedAt: createDate(2025, 12, 26),
   },
+  {
+    id: 'workout_dec_31_2025',
+    name: 'Workout',
+    date: createDate(2025, 12, 31),
+    workoutType: 'workout',
+    exercises: [],
+    athleteIds: [],
+    createdAt: createDate(2025, 12, 31),
+    updatedAt: createDate(2025, 12, 31),
+  },
+  {
+    id: 'workout_jan_1_2026',
+    name: 'Workout',
+    date: createDate(2026, 1, 1),
+    workoutType: 'workout',
+    exercises: [],
+    athleteIds: [],
+    createdAt: createDate(2026, 1, 1),
+    updatedAt: createDate(2026, 1, 1),
+  },
 ];
 
 /**

@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
-import { getAllAthletes, getAthleteName, getEffectiveRank, initializeAthletes } from '../../data/athletes';
+import { getAllAthletes, getEffectiveRank, initializeAthletes } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 
 interface SpreadsheetProps {
@@ -93,15 +94,120 @@ function calculateCooldownTime(columnIndex: number): string {
   return formatTimeFromSeconds(totalSeconds);
 }
 
+/**
+ * Generate dropdown options from -30 to +30
+ * Returns array of objects with value and label
+ */
+function generateTimeDifferenceOptions(): Array<{ value: number; label: string }> {
+  const options: Array<{ value: number; label: string }> = [];
+  for (let i = -30; i <= 30; i++) {
+    options.push({
+      value: i,
+      label: i === 0 ? '0' : i > 0 ? `+${i}` : `${i}`
+    });
+  }
+  return options;
+}
+
+const TIME_DIFFERENCE_OPTIONS = generateTimeDifferenceOptions();
+
+/**
+ * Workout segment definition
+ */
+interface WorkoutSegment {
+  distance: number; // in meters
+  percentage: number; // percentage of goal pace (e.g., 0.8 for 80%)
+}
+
+/**
+ * Workout configuration for a rank
+ */
+interface RankWorkoutConfig {
+  segments: WorkoutSegment[]; // The segments to repeat (e.g., [1000m 80%, 800m 100%])
+  repeats: number; // Number of times to repeat the segments
+}
+
+/**
+ * Get workout configuration for a rank
+ */
+function getWorkoutConfig(rank: 'rookie' | 'veteran' | 'varsity'): RankWorkoutConfig {
+  switch (rank) {
+    case 'varsity':
+      // Varsity: 1000m at 80%, then 800m at 100%, repeat 3 times
+      return {
+        segments: [
+          { distance: 1000, percentage: 0.8 },
+          { distance: 800, percentage: 1.0 }
+        ],
+        repeats: 3
+      };
+    case 'veteran':
+      // Veterans: 800m at 75%, then 1200m at 60%, repeat 2 times
+      return {
+        segments: [
+          { distance: 800, percentage: 0.75 },
+          { distance: 1200, percentage: 0.6 }
+        ],
+        repeats: 2
+      };
+    case 'rookie':
+      // Rookies: 400m at 90%, then 800m at 50%, repeat 4 times
+      return {
+        segments: [
+          { distance: 400, percentage: 0.9 },
+          { distance: 800, percentage: 0.5 }
+        ],
+        repeats: 4
+      };
+    default:
+      // Fallback (shouldn't happen)
+      return {
+        segments: [
+          { distance: 800, percentage: 0.7 },
+          { distance: 1000, percentage: 0.8 }
+        ],
+        repeats: 2
+      };
+  }
+}
+
+/**
+ * Generate all columns for a workout (including strides and all repeats)
+ */
+function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Array<{ distance: number; percentage: number; label: string }> {
+  const config = getWorkoutConfig(rank);
+  const columns: Array<{ distance: number; percentage: number; label: string }> = [];
+  
+  // All workouts start with 4 strides
+  columns.push({ distance: 0, percentage: 0, label: 'Strides' });
+  
+  // Add all repeats of segments
+  for (let repeat = 0; repeat < config.repeats; repeat++) {
+    config.segments.forEach(segment => {
+      columns.push({
+        distance: segment.distance,
+        percentage: segment.percentage,
+        label: `${segment.distance}m`
+      });
+    });
+  }
+  
+  return columns;
+}
+
 export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps) {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
-  // Store actual times entered by coaches: key format is "rowIndex-columnIndex"
-  const [actualTimes, setActualTimes] = useState<Record<string, string>>({});
+  // Store time differences for dropdown cells: key format is "rowIndex-columnIndex", value is number (-30 to +30) or null if not set
+  const [timeDifferences, setTimeDifferences] = useState<Record<string, number | null>>({});
+  // Track which dropdown is currently open: key format is "rowIndex-columnIndex"
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   
   // Single ref for the main horizontal scroll
   const mainScrollRef = useRef<ScrollView>(null);
+  // Ref for the dropdown scroll view
+  const dropdownScrollRef = useRef<ScrollView>(null);
 
   const loadAthletes = useCallback(async () => {
     await initializeAthletes();
@@ -117,27 +223,43 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
     loadAthletes();
   }, [loadAthletes]);
 
+  // Auto-scroll dropdown to center (0 option) when it opens
+  useEffect(() => {
+    if (openDropdown !== null && dropdownScrollRef.current) {
+      // Calculate scroll position to center the 0 option
+      // Each option is approximately 54px tall (14px padding + 14px padding + 16px text + 8px margin)
+      // We want to scroll so that option 30 (index 30) is at the top, showing 0 in the middle
+      // Actually, let's scroll to show 0 in the middle of the visible area
+      // With maxHeight 400, we can show about 7-8 options, so we want 0 to be in the middle
+      // Option 0 is at index 30 (since we go from -30 to +30)
+      const optionHeight = 54; // Approximate height per option
+      const visibleHeight = 400; // maxHeight of scroll view
+      const centerOffset = visibleHeight / 2;
+      const scrollToPosition = (30 * optionHeight) - centerOffset; // 30 is the index of 0
+      
+      setTimeout(() => {
+        dropdownScrollRef.current?.scrollTo({
+          y: Math.max(0, scrollToPosition),
+          animated: false,
+        });
+      }, 100);
+    }
+  }, [openDropdown]);
+
+  // Generate workout columns based on selected rank
+  const workoutColumns = useMemo(() => {
+    if (!selectedRank) return [];
+    return generateWorkoutColumns(selectedRank);
+  }, [selectedRank]);
+
   const filteredAthletes = useMemo(() => {
     if (!athletes || athletes.length === 0) {
       return [];
     }
     
-    // If no filters are selected, show all athletes (like attendance screen)
-    if (!selectedRank && !selectedGender) {
-      return athletes;
-    }
-    
-    // When only gender filter is selected, show all athletes of that gender
-    if (!selectedRank && selectedGender) {
-      const filtered = athletes.filter(athlete => {
-        const matches = athlete.gender === selectedGender;
-        // Debug logging
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`Athlete: ${getAthleteName(athlete)}, gender: ${athlete.gender}, selectedGender: ${selectedGender}, matches: ${matches}`);
-        }
-        return matches;
-      });
-      return filtered;
+    // REQUIRE rank filter - if no rank is selected, show nothing
+    if (!selectedRank) {
+      return [];
     }
     
     // When rank filter is selected (with or without gender), apply stricter filtering
@@ -158,10 +280,8 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
       }
       
       // Filter by selected rank
-      if (selectedRank) {
-        if (rank !== selectedRank) {
-          return false;
-        }
+      if (rank !== selectedRank) {
+        return false;
       }
       
       // Filter by selected gender
@@ -228,23 +348,32 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
       </View>
 
       {/* Table */}
-      <View style={styles.tableWrapper}>
-        <View style={[styles.table, isTablet && styles.tableTablet]}>
-          <View style={styles.tableContainer}>
-          {/* Fixed Name Column Container */}
-          <View style={styles.fixedNameColumn}>
-            {/* Header: Name (spans both rows) */}
-            <View style={styles.nameHeaderCell}>
-              <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>Name</Text>
-            </View>
-            {/* Data Rows: Names */}
-            {filteredAthletes.length === 0 ? (
-              <View style={[styles.nameCell, isTablet && styles.nameCellTablet]}>
-                <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
-                  No athletes found
-                </Text>
+      {!selectedRank ? (
+        <View style={[styles.tableWrapper, styles.emptyStateContainer]}>
+          <View style={[styles.table, isTablet && styles.tableTablet, styles.emptyStateTable]}>
+            <Text style={[baseStyles.text, styles.emptyStateText, isTablet && styles.emptyStateTextTablet]}>
+              Please select a rank to view the workout spreadsheet
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.tableWrapper}>
+          <View style={[styles.table, isTablet && styles.tableTablet]}>
+            <View style={styles.tableContainer}>
+            {/* Fixed Name Column Container */}
+            <View style={styles.fixedNameColumn}>
+              {/* Header: Name (spans both rows) */}
+              <View style={styles.nameHeaderCell}>
+                <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>Name</Text>
               </View>
-            ) : (() => {
+              {/* Data Rows: Names */}
+              {filteredAthletes.length === 0 ? (
+                <View style={[styles.nameCell, isTablet && styles.nameCellTablet]}>
+                  <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
+                    No athletes found
+                  </Text>
+                </View>
+              ) : (() => {
               // Create alternating rows: time, blank, time, blank... (2 rows per athlete)
               const totalRows = filteredAthletes.length * 2;
               const rows: (Athlete | null)[] = [];
@@ -336,69 +465,46 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
             style={styles.scrollableTable}
           >
             <View>
-              {/* Header Row 1: Distances */}
-              <View style={[styles.tableHeaderRow, isTablet && styles.tableHeaderRowTablet]}>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>Strides</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>800m</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>1000m</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>200m</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>1600m</Text>
-                </View>
-                {/* Second Set */}
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>800m</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>1000m</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>200m</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell, styles.lastHeaderCell]}>
-                  <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>1600m</Text>
-                </View>
-              </View>
-              
-              {/* Header Row 2: Percentages */}
-              <View style={[styles.tableHeaderRow, styles.percentageHeaderRow, isTablet && styles.tableHeaderRowTablet]}>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>4</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>70%</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>80%</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>100%</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>100%</Text>
-                </View>
-                {/* Second Set */}
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>70%</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>80%</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>100%</Text>
-                </View>
-                <View style={[styles.headerCell, styles.dataHeaderCell, styles.lastHeaderCell]}>
-                  <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>100%</Text>
-                </View>
-              </View>
+              {/* Only show headers if rank is selected and columns are generated */}
+              {workoutColumns.length > 0 && (
+                <>
+                  {/* Header Row 1: Distances */}
+                  <View style={[styles.tableHeaderRow, isTablet && styles.tableHeaderRowTablet]}>
+                    {workoutColumns.map((column, colIndex) => (
+                      <View 
+                        key={`header-distance-${colIndex}`}
+                        style={[
+                          styles.headerCell, 
+                          styles.dataHeaderCell,
+                          colIndex === workoutColumns.length - 1 && styles.lastHeaderCell
+                        ]}
+                      >
+                        <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>
+                          {column.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* Header Row 2: Percentages */}
+                  <View style={[styles.tableHeaderRow, styles.percentageHeaderRow, isTablet && styles.tableHeaderRowTablet]}>
+                    {workoutColumns.map((column, colIndex) => (
+                      <View 
+                        key={`header-percentage-${colIndex}`}
+                        style={[
+                          styles.headerCell, 
+                          styles.dataHeaderCell,
+                          colIndex === workoutColumns.length - 1 && styles.lastHeaderCell
+                        ]}
+                      >
+                        <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>
+                          {column.distance === 0 ? '4' : `${Math.round(column.percentage * 100)}%`}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* Data Rows */}
               {filteredAthletes.length === 0 ? null : (() => {
@@ -425,6 +531,24 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                   // Helper function to get input key for a cell
                   const getInputKey = (colIndex: number) => `${index}-${colIndex}`;
                   
+                  // Helper function to get time difference value for display
+                  const getTimeDifferenceValue = (colIndex: number): number | null => {
+                    const key = getInputKey(colIndex);
+                    // Check if key exists in the object
+                    if (!(key in timeDifferences)) return null;
+                    const value = timeDifferences[key];
+                    // Return null if value is explicitly null or undefined
+                    if (value === undefined || value === null) return null;
+                    return value;
+                  };
+                  
+                  // Helper function to format time difference for display
+                  const formatTimeDifference = (value: number | null | undefined): string => {
+                    if (value === null || value === undefined) return '--';
+                    if (value === 0) return '😊'; // Smiley face for hitting goal time exactly
+                    return value > 0 ? `+${value}` : `${value}`;
+                  };
+                  
                   return (
                     <View 
                       key={`data-row-${index}`} 
@@ -440,154 +564,48 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                         styles.rowDivider,
                         isLast && styles.lastRowDivider
                       ]} />
-                      {/* Strides column */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {isBlank && (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(0)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(0)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* 800m 70% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {formatTimeDisplay(goal1600m, 800, 0.7)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(1)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(1)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* 1000m 80% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {formatTimeDisplay(goal1600m, 1000, 0.8)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(2)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(2)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* 200m 100% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {calculateTime(goal1600m, 200, 1.0)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(3)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(3)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* 1600m 100% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {formatTimeDisplay(goal1600m, 1600, 1.0)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(4)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(4)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* Second Set - 800m 70% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {formatTimeDisplay(goal1600m, 800, 0.7)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(5)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(5)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* Second Set - 1000m 80% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {formatTimeDisplay(goal1600m, 1000, 0.8)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(6)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(6)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* Second Set - 200m 100% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                        <View style={styles.columnDivider} />
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {calculateTime(goal1600m, 200, 1.0)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(7)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(7)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
-                      {/* Second Set - 1600m 100% */}
-                      <View style={[styles.dataCell, isTablet && styles.dataCellTablet, styles.lastDataCell]}>
-                        {!isBlank ? (
-                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {formatTimeDisplay(goal1600m, 1600, 1.0)}
-                          </Text>
-                        ) : (
-                          <TextInput
-                            style={[styles.tableCell, styles.timeCellText, styles.inputCell, isTablet && styles.tableCellTablet]}
-                            value={actualTimes[getInputKey(8)] || ''}
-                            onChangeText={(text) => setActualTimes(prev => ({ ...prev, [getInputKey(8)]: text }))}
-                            placeholder=""
-                            keyboardType="default"
-                          />
-                        )}
-                      </View>
+                      {/* Dynamic columns based on workoutColumns */}
+                      {workoutColumns.map((column, colIndex) => {
+                        const isLastColumn = colIndex === workoutColumns.length - 1;
+                        const isStrides = column.distance === 0;
+                        
+                        return (
+                          <View 
+                            key={`data-cell-${index}-${colIndex}`}
+                            style={[
+                              styles.dataCell, 
+                              isTablet && styles.dataCellTablet,
+                              isLastColumn && styles.lastDataCell
+                            ]}
+                          >
+                            {!isLastColumn && <View style={styles.columnDivider} />}
+                            {isStrides ? (
+                              // Strides column - intentionally blank
+                              null
+                            ) : !isBlank ? (
+                              // Time row - show calculated time
+                              <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
+                                {column.distance > 400 
+                                  ? formatTimeDisplay(goal1600m, column.distance, column.percentage)
+                                  : calculateTime(goal1600m, column.distance, column.percentage)
+                                }
+                              </Text>
+                            ) : (
+                              // Blank row - show dropdown
+                              <TouchableOpacity
+                                style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
+                                onPress={() => setOpenDropdown(getInputKey(colIndex))}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.dropdownButtonText, isTablet && styles.dropdownButtonTextTablet]}>
+                                  {formatTimeDifference(getTimeDifferenceValue(colIndex))}
+                                </Text>
+                                <Ionicons name="chevron-down" size={isTablet ? 16 : 14} color={Colors.text} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        );
+                      })}
                     </View>
                   );
                 }).concat(
@@ -601,68 +619,25 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                     ]}
                   >
                     <View style={styles.rowDivider} />
-                    {/* Strides column */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(0)}
-                      </Text>
-                    </View>
-                    {/* 800m 70% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(1)}
-                      </Text>
-                    </View>
-                    {/* 1000m 80% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(2)}
-                      </Text>
-                    </View>
-                    {/* 200m 100% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(3)}
-                      </Text>
-                    </View>
-                    {/* 1600m 100% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(4)}
-                      </Text>
-                    </View>
-                    {/* Second Set - 800m 70% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(5)}
-                      </Text>
-                    </View>
-                    {/* Second Set - 1000m 80% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(6)}
-                      </Text>
-                    </View>
-                    {/* Second Set - 200m 100% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet]}>
-                      <View style={styles.columnDivider} />
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(7)}
-                      </Text>
-                    </View>
-                    {/* Second Set - 1600m 100% */}
-                    <View style={[styles.dataCell, isTablet && styles.dataCellTablet, styles.lastDataCell]}>
-                      <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                        {calculateCooldownTime(8)}
-                      </Text>
-                    </View>
+                    {/* Dynamic cooldown columns */}
+                    {workoutColumns.map((column, colIndex) => {
+                      const isLastColumn = colIndex === workoutColumns.length - 1;
+                      return (
+                        <View 
+                          key={`cooldown-cell-${colIndex}`}
+                          style={[
+                            styles.dataCell, 
+                            isTablet && styles.dataCellTablet,
+                            isLastColumn && styles.lastDataCell
+                          ]}
+                        >
+                          {!isLastColumn && <View style={styles.columnDivider} />}
+                          <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
+                            {calculateCooldownTime(colIndex)}
+                          </Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 );
               })()}
@@ -671,6 +646,76 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
           </View>
         </View>
       </View>
+      )}
+      
+      {/* Time Difference Dropdown Modal */}
+      <Modal
+        visible={openDropdown !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setOpenDropdown(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setOpenDropdown(null)}
+        >
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.text, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                Seconds Over/Under Goal
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                onPress={() => setOpenDropdown(null)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 24 : 20} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              ref={dropdownScrollRef}
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+            >
+              {TIME_DIFFERENCE_OPTIONS.map((option) => {
+                const currentKey = openDropdown;
+                const currentValue = currentKey ? (timeDifferences[currentKey] ?? null) : null;
+                const isSelected = option.value === currentValue;
+                
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.modalOption,
+                      isSelected && styles.modalOptionSelected,
+                      isTablet && styles.modalOptionTablet
+                    ]}
+                    onPress={() => {
+                      if (currentKey) {
+                        setTimeDifferences(prev => ({ ...prev, [currentKey]: option.value }));
+                      }
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <Text style={[
+                      styles.modalOptionText,
+                      isSelected && styles.modalOptionTextSelected,
+                      isTablet && styles.modalOptionTextTablet
+                    ]}>
+                      {option.label}
+                    </Text>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={Colors.secondary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -1025,21 +1070,164 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  inputCell: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    margin: 0,
-    textAlign: 'center',
-    color: Colors.text,
-    width: '100%',
-    minHeight: 20,
-  },
   timeRowBackground: {
     backgroundColor: 'rgba(30, 58, 95, 0.04)', // Light blue-gray background for time rows
   },
   cooldownRowBackground: {
     backgroundColor: 'rgba(30, 58, 95, 0.12)', // Blueish background for cooldown row
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+    minHeight: 36,
+    width: '100%',
+  },
+  dropdownButtonTablet: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    minHeight: 40,
+  },
+  dropdownButtonText: {
+    fontSize: 14,
+    color: Colors.text,
+    fontWeight: '600',
+    marginRight: 6,
+    fontFamily: 'monospace',
+  },
+  dropdownButtonTextTablet: {
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+    position: 'relative',
+  },
+  modalContentTablet: {
+    padding: 32,
+    borderRadius: 24,
+    maxWidth: 500,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    paddingRight: 40, // Space for close button
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.neutralBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: Colors.neutralMedium,
+  },
+  modalCloseButtonTablet: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.primary,
+    flex: 1,
+    textAlign: 'center',
+  },
+  modalTitleTablet: {
+    fontSize: 24,
+  },
+  modalScrollView: {
+    maxHeight: 400,
+  },
+  modalScrollContent: {
+    paddingBottom: 8,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  modalOptionTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+  },
+  modalOptionSelected: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.secondary,
+    borderWidth: 2,
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '600',
+    fontFamily: 'monospace',
+  },
+  modalOptionTextTablet: {
+    fontSize: 18,
+  },
+  modalOptionTextSelected: {
+    color: Colors.secondary,
+    fontWeight: '700',
+  },
+  emptyStateContainer: {
+    paddingHorizontal: 16,
+  },
+  emptyStateTable: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '500',
+    textAlign: 'center',
+    opacity: 0.7,
+  },
+  emptyStateTextTablet: {
+    fontSize: 18,
   },
 });
 
