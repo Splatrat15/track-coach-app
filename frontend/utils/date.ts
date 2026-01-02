@@ -116,3 +116,51 @@ export function formatTimeArizona(date: Date): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+/**
+ * Get the Monday of the week that contains the given date
+ * Weeks run Monday to Sunday
+ */
+export function getMondayOfWeek(date: Date): Date {
+  const d = normalizeDate(date);
+  const dayOfWeek = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days; otherwise go back (dayOfWeek - 1) days
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + daysToMonday);
+  return normalizeDate(monday);
+}
+
+/**
+ * Get the Sunday of the week that contains the given date
+ * Weeks run Monday to Sunday
+ */
+export function getSundayOfWeek(date: Date): Date {
+  const monday = getMondayOfWeek(date);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return normalizeDate(sunday);
+}
+
+/**
+ * Get the 3-week window for workout storage
+ * Returns an object with startDate (last week Monday) and endDate (next week Sunday)
+ * Example: If today is Wednesday Dec 24, returns Dec 15 (last week Monday) to Jan 5 (next week Sunday)
+ */
+export function getWorkoutStorageWindow(): { startDate: Date; endDate: Date } {
+  const today = normalizeDate(new Date());
+  const currentWeekMonday = getMondayOfWeek(today);
+  
+  // Last week Monday (1 week before current week Monday)
+  const lastWeekMonday = new Date(currentWeekMonday);
+  lastWeekMonday.setDate(currentWeekMonday.getDate() - 7);
+  
+  // Next week Sunday (1 week after current week Sunday)
+  const currentWeekSunday = getSundayOfWeek(today);
+  const nextWeekSunday = new Date(currentWeekSunday);
+  nextWeekSunday.setDate(currentWeekSunday.getDate() + 7);
+  
+  return {
+    startDate: normalizeDate(lastWeekMonday),
+    endDate: normalizeDate(nextWeekSunday),
+  };
+}
+

@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import LongRun from '../../components/workoutTypes/LongRun';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { initializeAthletes } from '../../data/athletes';
 import { getLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
-import { getAllWorkouts } from '../../data/workouts';
+import { initializeUserRole, isCoach } from '../../data/user';
+import { addExerciseToWorkout, addWorkout, getAllWorkouts, getWorkoutById, initializeWorkouts, removeExerciseFromWorkout, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
-import { formatDate, getDateKey, isToday, normalizeDate } from '../../utils/date';
+import { formatDate, getDateKey, isToday, normalizeDate, getWorkoutStorageWindow } from '../../utils/date';
 
 export default function WorkoutScreen() {
   const { width } = useWindowDimensions();
@@ -21,11 +22,57 @@ export default function WorkoutScreen() {
   });
   // Track which sections are open/closed for each workout
   const [expandedSections, setExpandedSections] = useState<{ [workoutId: string]: { [sectionKey: string]: boolean } }>({});
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isCoachUser, setIsCoachUser] = useState(false);
+  // Workout editing state
+  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  const [workoutTypeModalVisible, setWorkoutTypeModalVisible] = useState(false);
+  const [workoutName, setWorkoutName] = useState('');
+  const [workoutDescription, setWorkoutDescription] = useState('');
+  const [selectedWorkoutType, setSelectedWorkoutType] = useState<'workout' | 'longrun' | 'recovery' | undefined>(undefined);
+  // Exercise editing state
+  const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [editingExerciseWorkoutId, setEditingExerciseWorkoutId] = useState<string | null>(null);
+  const [editingExerciseSection, setEditingExerciseSection] = useState<'warmup' | 'postworkout' | null>(null);
+  const [exerciseName, setExerciseName] = useState('');
+  const [exerciseNotes, setExerciseNotes] = useState('');
+  const [exerciseReps, setExerciseReps] = useState<string>('');
+  const [exerciseSets, setExerciseSets] = useState<string>('');
+  const [exerciseDuration, setExerciseDuration] = useState<string>('');
+  const [exerciseDistance, setExerciseDistance] = useState<string>('');
+  // Reorder state
+  const [reorderingExerciseId, setReorderingExerciseId] = useState<string | null>(null);
+  // Drag and drop state
+  const [draggingExerciseId, setDraggingExerciseId] = useState<string | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [draggingSection, setDraggingSection] = useState<string | null>(null);
+  const [draggingWorkoutId, setDraggingWorkoutId] = useState<string | null>(null);
+  const [previewInsertIndex, setPreviewInsertIndex] = useState<number | null>(null); // Where to show insertion indicator
+  const dragY = useRef(new Animated.Value(0)).current;
+  const dragPosition = useRef(0);
+  const lastReorderIndex = useRef<number | null>(null); // Track last reordered index to prevent frequent updates
+  const dragStartY = useRef<number>(0); // Track where the drag started (pageY)
+  const exerciseItemRefs = useRef<{ [key: string]: { y: number; height: number } }>({}); // Track exercise item positions
 
   useEffect(() => {
     const init = async () => {
+      await initializeUserRole();
       await initializeAthletes();
+      await initializeWorkouts();
       setWorkouts(getAllWorkouts());
+      setIsCoachUser(isCoach());
+      
+      // Clamp selectedDate to the 3-week window
+      const window = getWorkoutStorageWindow();
+      const today = normalizeDate(new Date());
+      const clampedDate = today < window.startDate 
+        ? window.startDate 
+        : today > window.endDate 
+          ? window.endDate 
+          : today;
+      setSelectedDate(clampedDate);
     };
     init();
   }, []);
@@ -38,21 +85,63 @@ export default function WorkoutScreen() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [workouts, selectedDate]);
 
-  // Navigation functions - move day by day
+  // Get the 3-week window boundaries
+  const storageWindow = useMemo(() => getWorkoutStorageWindow(), []);
+  
+  // Clamp selectedDate to the window whenever it changes
+  useEffect(() => {
+    const selected = normalizeDate(selectedDate);
+    if (selected < storageWindow.startDate) {
+      setSelectedDate(storageWindow.startDate);
+    } else if (selected > storageWindow.endDate) {
+      setSelectedDate(storageWindow.endDate);
+    }
+  }, [selectedDate, storageWindow]);
+  
+  // Check if navigation is allowed
+  const canGoPrevious = useMemo(() => {
+    const selected = normalizeDate(selectedDate);
+    return selected > storageWindow.startDate;
+  }, [selectedDate, storageWindow.startDate]);
+  
+  const canGoNext = useMemo(() => {
+    const selected = normalizeDate(selectedDate);
+    return selected < storageWindow.endDate;
+  }, [selectedDate, storageWindow.endDate]);
+
+  // Navigation functions - move day by day (restricted to 3-week window)
   const goToPreviousDate = () => {
+    if (!canGoPrevious) return;
     const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
-    setSelectedDate(normalizeDate(prevDate));
+    const normalized = normalizeDate(prevDate);
+    // Ensure we don't go below the start date
+    if (normalized >= storageWindow.startDate) {
+      setSelectedDate(normalized);
+    }
   };
 
   const goToNextDate = () => {
+    if (!canGoNext) return;
     const nextDate = new Date(selectedDate);
     nextDate.setDate(nextDate.getDate() + 1);
-    setSelectedDate(normalizeDate(nextDate));
+    const normalized = normalizeDate(nextDate);
+    // Ensure we don't go above the end date
+    if (normalized <= storageWindow.endDate) {
+      setSelectedDate(normalized);
+    }
   };
 
   const goToToday = () => {
-    setSelectedDate(normalizeDate(new Date()));
+    const today = normalizeDate(new Date());
+    // Clamp to window if today is outside it
+    if (today < storageWindow.startDate) {
+      setSelectedDate(storageWindow.startDate);
+    } else if (today > storageWindow.endDate) {
+      setSelectedDate(storageWindow.endDate);
+    } else {
+      setSelectedDate(today);
+    }
   };
 
   const openLocationInMaps = (address: string) => {
@@ -99,6 +188,853 @@ export default function WorkoutScreen() {
     });
   };
 
+  // Check if selected date is in the past (cannot edit past dates)
+  const canEditDate = useMemo(() => {
+    const today = normalizeDate(new Date());
+    const selected = normalizeDate(selectedDate);
+    return selected >= today;
+  }, [selectedDate]);
+
+  // Toggle edit mode
+  const toggleEditMode = () => {
+    if (!isCoachUser) return;
+    setIsEditMode(!isEditMode);
+    if (isEditMode) {
+      // Exiting edit mode - reset editing state
+      setEditingWorkout(null);
+      setWorkoutName('');
+      setWorkoutDescription('');
+      setSelectedWorkoutType(undefined);
+    }
+  };
+
+  // Open workout type selector
+  const openWorkoutTypeSelector = (workout?: Workout) => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Edit', 'You cannot edit workouts from previous dates.');
+      return;
+    }
+    if (workout) {
+      setEditingWorkout(workout);
+      setWorkoutName(workout.name);
+      setWorkoutDescription(workout.description || '');
+      setSelectedWorkoutType(workout.workoutType);
+    } else {
+      setEditingWorkout(null);
+      setWorkoutName('Workout');
+      setWorkoutDescription('');
+      setSelectedWorkoutType(undefined);
+    }
+    setWorkoutTypeModalVisible(true);
+  };
+
+  // Save workout
+  const saveWorkout = async () => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Save', 'You cannot create or edit workouts from previous dates.');
+      return;
+    }
+
+    try {
+      if (editingWorkout) {
+        // Check if workout type changed
+        const workoutTypeChanged = editingWorkout.workoutType !== selectedWorkoutType;
+        let updatedExercises = [...editingWorkout.exercises];
+        
+        if (workoutTypeChanged && selectedWorkoutType) {
+          // Get all existing exercise IDs (including dynamic versions)
+          const existingExerciseIds = new Set(updatedExercises
+            .filter(ex => !ex.id?.startsWith('__DELETED_MARKER__') && !ex.name?.startsWith('__DELETED__'))
+            .map(ex => ex.id));
+          
+          // Get deleted template IDs
+          const deletedTemplateIds = new Set<string>();
+          updatedExercises.forEach(ex => {
+            if (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__')) {
+              const originalId = ex.name.replace('__DELETED__', '');
+              deletedTemplateIds.add(originalId);
+            }
+          });
+          
+          // Get basic warmup template
+          const warmupTemplate = getTemplateById('warmup');
+          if (warmupTemplate) {
+            // Add basic warmup exercises if they don't exist and aren't deleted
+            warmupTemplate.exercises.forEach(templateEx => {
+              const exId = templateEx.id || '';
+              // Skip if already exists or is deleted
+              if (!existingExerciseIds.has(exId) && !deletedTemplateIds.has(exId)) {
+                // Add as dynamic exercise
+                updatedExercises.push({
+                  ...templateEx,
+                  section: 'warmup',
+                });
+                existingExerciseIds.add(exId);
+              }
+            });
+          }
+          
+          // Handle Dynamics: remove old ones and add new one
+          const oldDynamicsIds = [
+            'warmup-stretches-recovery',
+            'warmup-stretches-workout',
+            'warmup-stretches-longrun'
+          ];
+          
+          // Remove old Dynamics exercises (both template and dynamic versions) and their delete markers
+          updatedExercises = updatedExercises.filter(ex => {
+            const exId = ex.id || '';
+            // Remove if it's a Dynamics exercise
+            if (oldDynamicsIds.includes(exId)) return false;
+            // Remove if it's a delete marker for an old Dynamics exercise
+            if (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__')) {
+              const originalId = ex.name.replace('__DELETED__', '');
+              if (oldDynamicsIds.includes(originalId)) return false;
+            }
+            // Keep everything else
+            return true;
+          });
+          
+          // Add new Dynamics based on workout type
+          const newDynamicsTemplateId = getStretchTemplateIdForWorkoutType(selectedWorkoutType);
+          if (newDynamicsTemplateId) {
+            const dynamicsTemplate = getTemplateById(newDynamicsTemplateId);
+            if (dynamicsTemplate && dynamicsTemplate.exercises.length > 0) {
+              const newDynamics = dynamicsTemplate.exercises[0];
+              const newDynamicsId = newDynamics.id || '';
+              
+              // Only add if not deleted
+              if (!deletedTemplateIds.has(newDynamicsId)) {
+                updatedExercises.push({
+                  ...newDynamics,
+                  section: 'warmup',
+                });
+              }
+            }
+          }
+        }
+        
+        // Update existing workout
+        await updateWorkout(editingWorkout.id, {
+          name: workoutName,
+          description: workoutDescription || undefined,
+          workoutType: selectedWorkoutType,
+          date: selectedDate,
+          exercises: updatedExercises,
+          athleteIds: editingWorkout.athleteIds,
+        });
+      } else {
+        // Create new workout
+        await addWorkout({
+          name: workoutName,
+          description: workoutDescription || undefined,
+          workoutType: selectedWorkoutType,
+          date: selectedDate,
+          exercises: [],
+          athleteIds: [],
+        });
+      }
+      
+      // Refresh workouts
+      setWorkouts(getAllWorkouts());
+      setWorkoutTypeModalVisible(false);
+      setEditingWorkout(null);
+      setWorkoutName('');
+      setWorkoutDescription('');
+      setSelectedWorkoutType(undefined);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save workout');
+    }
+  };
+
+  // Open exercise editor
+  const openExerciseEditor = (workoutId: string, section: 'warmup' | 'postworkout', exercise?: Exercise) => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Edit', 'You cannot edit exercises from previous dates.');
+      return;
+    }
+    setEditingExerciseWorkoutId(workoutId);
+    setEditingExerciseSection(section);
+    if (exercise) {
+      setEditingExercise(exercise);
+      setExerciseName(exercise.name || '');
+      setExerciseNotes(exercise.notes || '');
+      setExerciseReps(exercise.reps?.toString() || '');
+      setExerciseSets(exercise.sets?.toString() || '');
+      setExerciseDuration(exercise.duration ? (exercise.duration / 60).toString() : ''); // Convert seconds to minutes
+      setExerciseDistance(exercise.distance?.toString() || '');
+    } else {
+      setEditingExercise(null);
+      setExerciseName('');
+      setExerciseNotes('');
+      setExerciseReps('');
+      setExerciseSets('');
+      setExerciseDuration('');
+      setExerciseDistance('');
+    }
+    setExerciseModalVisible(true);
+  };
+
+  // Save exercise
+  const saveExercise = async () => {
+    if (!editingExerciseWorkoutId || !editingExerciseSection || !canEditDate) {
+      Alert.alert('Error', 'Cannot save exercise.');
+      return;
+    }
+
+    try {
+      const exerciseData: Partial<Exercise> = {
+        name: exerciseName.trim(),
+        section: editingExerciseSection,
+        notes: exerciseNotes.trim() || undefined,
+        reps: exerciseReps ? parseInt(exerciseReps, 10) : undefined,
+        sets: exerciseSets ? parseInt(exerciseSets, 10) : undefined,
+        duration: exerciseDuration ? parseInt(exerciseDuration, 10) * 60 : undefined, // Convert minutes to seconds
+        distance: exerciseDistance ? parseInt(exerciseDistance, 10) : undefined,
+      };
+
+      if (editingExercise) {
+        // Check if it's a template exercise (not in workout.exercises)
+        const workout = getWorkoutById(editingExerciseWorkoutId);
+        if (!workout) return;
+        
+        const isTemplateExercise = !workout.exercises.some(ex => ex.id === editingExercise.id);
+        
+        if (isTemplateExercise) {
+          // Template exercise - add it to workout.exercises as a dynamic exercise
+          workout.exercises.push({
+            ...editingExercise,
+            ...exerciseData,
+          });
+          await updateWorkout(editingExerciseWorkoutId, {
+            exercises: workout.exercises,
+          });
+        } else {
+          // Update existing exercise
+          await updateExerciseInWorkout(editingExerciseWorkoutId, editingExercise.id, exerciseData);
+        }
+      } else {
+      // Create new exercise - add at the bottom
+      const workout = getWorkoutById(editingExerciseWorkoutId);
+      if (!workout) return;
+
+      const newExercise: Exercise = {
+        id: `exercise_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: exerciseName.trim(),
+        section: editingExerciseSection,
+        notes: exerciseNotes.trim() || undefined,
+        reps: exerciseReps ? parseInt(exerciseReps, 10) : undefined,
+        sets: exerciseSets ? parseInt(exerciseSets, 10) : undefined,
+        duration: exerciseDuration ? parseInt(exerciseDuration, 10) * 60 : undefined,
+        distance: exerciseDistance ? parseInt(exerciseDistance, 10) : undefined,
+      };
+
+      // Add to the end of the exercises array
+      workout.exercises.push(newExercise);
+      await updateWorkout(editingExerciseWorkoutId, {
+        exercises: workout.exercises,
+      });
+      }
+
+      // Refresh workouts
+      setWorkouts(getAllWorkouts());
+      setExerciseModalVisible(false);
+      setEditingExercise(null);
+      setEditingExerciseWorkoutId(null);
+      setEditingExerciseSection(null);
+      setExerciseName('');
+      setExerciseNotes('');
+      setExerciseReps('');
+      setExerciseSets('');
+      setExerciseDuration('');
+      setExerciseDistance('');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save exercise');
+    }
+  };
+
+  // Delete exercise
+  const deleteExercise = async (workoutId: string, exerciseId: string) => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Delete', 'You cannot delete exercises from previous dates.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Exercise',
+      'Are you sure you want to delete this exercise?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const workout = getWorkoutById(workoutId);
+              if (!workout) return;
+              
+              // Get template exercise IDs to check if this is a template
+              const defaultTemplates = ['warmup', 'cooldown'];
+              const stretchTemplateId = getStretchTemplateIdForWorkoutType(workout.workoutType);
+              if (stretchTemplateId) {
+                defaultTemplates.push(stretchTemplateId);
+              }
+              const allTemplateIds = [...defaultTemplates, ...(workout.templateSections || [])];
+              const uniqueTemplateIds = Array.from(new Set(allTemplateIds));
+              const templateExerciseIds = new Set<string>();
+              uniqueTemplateIds.forEach(templateId => {
+                const template = getTemplateById(templateId);
+                if (template) {
+                  template.exercises.forEach(ex => {
+                    if (ex.id) templateExerciseIds.add(ex.id);
+                  });
+                }
+              });
+              
+              // Check if exercise exists in workout.exercises (as a dynamic exercise, not a marker)
+              const exerciseExists = workout.exercises.some(ex => 
+                ex.id === exerciseId && 
+                !ex.id.startsWith('__DELETED_MARKER__') &&
+                !ex.name?.startsWith('__DELETED__')
+              );
+              
+              // Check if it's a template exercise (even if it exists as dynamic)
+              const isTemplateExercise = templateExerciseIds.has(exerciseId);
+              
+              // Remove the dynamic exercise if it exists
+              workout.exercises = workout.exercises.filter(ex => 
+                ex.id !== exerciseId && 
+                ex.id !== `__DELETED_MARKER__${exerciseId}` &&
+                ex.name !== `__DELETED__${exerciseId}`
+              );
+              
+              // If it's a template exercise, add a delete marker to prevent template from showing it
+              if (isTemplateExercise) {
+                const deleteMarkerId = `__DELETED_MARKER__${exerciseId}`;
+                
+                // Remove any existing markers for this exercise (in case there are duplicates)
+                workout.exercises = workout.exercises.filter(ex => 
+                  ex.id !== deleteMarkerId &&
+                  !(ex.name === `__DELETED__${exerciseId}` && ex.id?.startsWith('__DELETED_MARKER__'))
+                );
+                
+                // Add new marker
+                workout.exercises.push({
+                  id: deleteMarkerId,
+                  name: `__DELETED__${exerciseId}`,
+                  section: 'warmup', // placeholder - won't be displayed
+                });
+              }
+              
+              await updateWorkout(workoutId, {
+                exercises: workout.exercises,
+              });
+              
+              setWorkouts(getAllWorkouts());
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete exercise');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Reorder exercise
+  const reorderExercise = async (workoutId: string, exerciseId: string, direction: 'up' | 'down') => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Reorder', 'You cannot reorder exercises from previous dates.');
+      return;
+    }
+
+    try {
+      const workout = getWorkoutById(workoutId);
+      if (!workout) return;
+
+      // Get exercises for the section (we need to work with the full list)
+      const allExercises = [...workout.exercises];
+      
+      // Find the exercise index
+      const exerciseIndex = allExercises.findIndex(ex => ex.id === exerciseId);
+      if (exerciseIndex === -1) return;
+
+      // Calculate new index
+      const newIndex = direction === 'up' ? exerciseIndex - 1 : exerciseIndex + 1;
+      
+      // Check bounds
+      if (newIndex < 0 || newIndex >= allExercises.length) {
+        setReorderingExerciseId(null);
+        return;
+      }
+
+      // Swap exercises
+      const temp = allExercises[exerciseIndex];
+      allExercises[exerciseIndex] = allExercises[newIndex];
+      allExercises[newIndex] = temp;
+
+      // Update workout
+      await updateWorkout(workoutId, {
+        exercises: allExercises,
+      });
+
+      setWorkouts(getAllWorkouts());
+      setReorderingExerciseId(null);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to reorder exercise');
+      setReorderingExerciseId(null);
+    }
+  };
+
+  // Handle long press to start reordering
+  const handleExerciseLongPress = (exerciseId: string, index: number, sectionKey: string, workoutId: string) => {
+    if (!isEditMode || !isCoachUser || !canEditDate) return;
+    // Start dragging immediately on long press
+    setDraggingExerciseId(exerciseId);
+    setDraggingIndex(index);
+    setDraggingSection(sectionKey);
+    setDraggingWorkoutId(workoutId);
+    dragY.setValue(0);
+    dragPosition.current = 0;
+  };
+
+  // Use refs to access latest state in PanResponder
+  const draggingExerciseIdRef = useRef(draggingExerciseId);
+  const draggingIndexRef = useRef(draggingIndex);
+  const draggingSectionRef = useRef(draggingSection);
+  const draggingWorkoutIdRef = useRef(draggingWorkoutId);
+  const previewInsertIndexRef = useRef(previewInsertIndex);
+  const isTabletRef = useRef(isTablet);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    draggingExerciseIdRef.current = draggingExerciseId;
+    draggingIndexRef.current = draggingIndex;
+    draggingSectionRef.current = draggingSection;
+    draggingWorkoutIdRef.current = draggingWorkoutId;
+    previewInsertIndexRef.current = previewInsertIndex;
+    isTabletRef.current = isTablet;
+  }, [draggingExerciseId, draggingIndex, draggingSection, draggingWorkoutId, previewInsertIndex, isTablet]);
+
+  // Global pan responder for drag and drop - created once and reused
+  const globalPanResponder = useMemo(() => {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => !!draggingExerciseIdRef.current, // Only capture if dragging
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Capture if dragging and moved enough
+        return !!draggingExerciseIdRef.current && Math.abs(gestureState.dy) > 2;
+      },
+      onPanResponderGrant: (evt) => {
+        if (draggingExerciseIdRef.current) {
+          // Set the offset to the current position so movement is relative
+          dragY.setOffset(0);
+          dragY.setValue(0);
+        }
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Update the visual position - item follows finger (fluid dragging)
+        dragY.setValue(gestureState.dy);
+        
+        // Calculate target insertion index for preview indicator
+        const exerciseId = draggingExerciseIdRef.current;
+        const workoutId = draggingWorkoutIdRef.current;
+        const section = draggingSectionRef.current;
+        const currentIndex = draggingIndexRef.current;
+        
+        if (exerciseId && workoutId && section && currentIndex !== null) {
+          const workout = getWorkoutById(workoutId);
+          if (workout) {
+            // Get section exercises to calculate target
+            const defaultTemplates = ['warmup', 'cooldown'];
+            const stretchTemplateId = getStretchTemplateIdForWorkoutType(workout.workoutType);
+            if (stretchTemplateId) {
+              defaultTemplates.push(stretchTemplateId);
+            }
+            const allTemplateIds = [...defaultTemplates, ...(workout.templateSections || [])];
+            const uniqueTemplateIds = Array.from(new Set(allTemplateIds));
+            
+            const templateExercises: Exercise[] = [];
+            const templateExerciseIds = new Set<string>();
+            uniqueTemplateIds.forEach(templateId => {
+              const template = getTemplateById(templateId);
+              if (template) {
+                template.exercises.forEach(ex => {
+                  templateExercises.push(ex);
+                  if (ex.id) templateExerciseIds.add(ex.id);
+                });
+              }
+            });
+
+            const deletedTemplateIds = new Set<string>();
+            workout.exercises.forEach(ex => {
+              if (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__')) {
+                const originalId = ex.name.replace('__DELETED__', '');
+                deletedTemplateIds.add(originalId);
+              }
+            });
+
+            const activeWorkoutExercises = workout.exercises.filter(
+              ex => !ex.name?.startsWith('__DELETED__') && !ex.id?.startsWith('__DELETED_MARKER__')
+            );
+            const workoutExerciseIds = new Set(activeWorkoutExercises.map(ex => ex.id));
+
+            let sectionExercises: Exercise[] = [];
+            if (section === 'warmup') {
+              const workoutWarmup = activeWorkoutExercises.filter(ex => 
+                ex.section === 'warmup' || (!ex.section && ex.id && !templateExerciseIds.has(ex.id))
+              );
+              const templateWarmup = templateExercises.filter(ex => {
+                const exId = ex.id || '';
+                return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId) && 
+                       (ex.section === 'warmup' || !ex.section);
+              });
+              sectionExercises = [...workoutWarmup, ...templateWarmup];
+            } else {
+              const workoutSection = activeWorkoutExercises.filter(ex => ex.section === section);
+              const templateSection = templateExercises.filter(ex => {
+                const exId = ex.id || '';
+                return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId) && ex.section === section;
+              });
+              sectionExercises = [...workoutSection, ...templateSection];
+            }
+            
+            const totalExercises = sectionExercises.length;
+            const estimatedItemHeight = isTabletRef.current ? 120 : 90;
+            const itemsMoved = Math.round(gestureState.dy / estimatedItemHeight);
+            let targetIndex = Math.max(0, Math.min(totalExercises - 1, currentIndex + itemsMoved));
+            
+            // Adjust target index: if moving down, insert after target; if moving up, insert before target
+            if (targetIndex > currentIndex) {
+              targetIndex = targetIndex + 1; // Insert after the target
+            }
+            
+            // Clamp to valid range (0 to totalExercises, since we can insert at the end)
+            targetIndex = Math.max(0, Math.min(totalExercises, targetIndex));
+            
+            // Update preview insertion index
+            setPreviewInsertIndex(targetIndex);
+          }
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        const exerciseId = draggingExerciseIdRef.current;
+        const workoutId = draggingWorkoutIdRef.current;
+        const section = draggingSectionRef.current;
+        const currentIndex = draggingIndexRef.current;
+        
+        if (exerciseId && workoutId && section && currentIndex !== null) {
+          // Get the final position based on where they released
+          const workout = getWorkoutById(workoutId);
+          if (!workout) {
+            dragY.setValue(0);
+            setDraggingExerciseId(null);
+            setDraggingIndex(null);
+            setDraggingSection(null);
+            setDraggingWorkoutId(null);
+            return;
+          }
+          
+          // Get section exercises (same logic as display)
+          const defaultTemplates = ['warmup', 'cooldown'];
+          const stretchTemplateId = getStretchTemplateIdForWorkoutType(workout.workoutType);
+          if (stretchTemplateId) {
+            defaultTemplates.push(stretchTemplateId);
+          }
+          const allTemplateIds = [...defaultTemplates, ...(workout.templateSections || [])];
+          const uniqueTemplateIds = Array.from(new Set(allTemplateIds));
+          
+          const templateExercises: Exercise[] = [];
+          const templateExerciseIds = new Set<string>();
+          uniqueTemplateIds.forEach(templateId => {
+            const template = getTemplateById(templateId);
+            if (template) {
+              template.exercises.forEach(ex => {
+                templateExercises.push(ex);
+                if (ex.id) templateExerciseIds.add(ex.id);
+              });
+            }
+          });
+
+          const deletedTemplateIds = new Set<string>();
+          workout.exercises.forEach(ex => {
+            if (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__')) {
+              const originalId = ex.name.replace('__DELETED__', '');
+              deletedTemplateIds.add(originalId);
+            }
+          });
+
+          const activeWorkoutExercises = workout.exercises.filter(
+            ex => !ex.name?.startsWith('__DELETED__') && !ex.id?.startsWith('__DELETED_MARKER__')
+          );
+          const workoutExerciseIds = new Set(activeWorkoutExercises.map(ex => ex.id));
+
+          let sectionExercises: Exercise[] = [];
+          if (section === 'warmup') {
+            const workoutWarmup = activeWorkoutExercises.filter(ex => 
+              ex.section === 'warmup' || (!ex.section && ex.id && !templateExerciseIds.has(ex.id))
+            );
+            const templateWarmup = templateExercises.filter(ex => {
+              const exId = ex.id || '';
+              return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId) && 
+                     (ex.section === 'warmup' || !ex.section);
+            });
+            sectionExercises = [...workoutWarmup, ...templateWarmup];
+          } else {
+            const workoutSection = activeWorkoutExercises.filter(ex => ex.section === section);
+            const templateSection = templateExercises.filter(ex => {
+              const exId = ex.id || '';
+              return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId) && ex.section === section;
+            });
+            sectionExercises = [...workoutSection, ...templateSection];
+          }
+          
+          const totalExercises = sectionExercises.length;
+          
+          // Use the preview insertion index that was calculated during drag
+          const targetInsertIndex = previewInsertIndexRef.current;
+          
+          if (targetInsertIndex !== null) {
+            // Convert insertion index to actual target index (insertion index can be one past the end)
+            let targetIndex = targetInsertIndex;
+            if (targetInsertIndex > currentIndex) {
+              // Moving down: insertion index is after target, so actual index is one less
+              targetIndex = Math.max(0, Math.min(totalExercises - 1, targetInsertIndex - 1));
+            } else if (targetInsertIndex < currentIndex) {
+              // Moving up: insertion index is before target, so use it directly
+              targetIndex = Math.max(0, Math.min(totalExercises - 1, targetInsertIndex));
+            } else {
+              // Same position
+              targetIndex = currentIndex;
+            }
+            
+            // Only reorder if position actually changed
+            if (targetIndex !== currentIndex && targetIndex >= 0 && targetIndex < totalExercises) {
+              // Reorder once on release
+              reorderExerciseImmediate(workoutId, exerciseId, targetIndex > currentIndex ? 'down' : 'up', targetIndex, currentIndex);
+            }
+          }
+          
+          // Animate to final position (0) smoothly
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 300,
+            friction: 30,
+          }).start(() => {
+            dragY.flattenOffset();
+            dragPosition.current = 0;
+            
+            // Save the final order after animation
+            saveExerciseOrder(workoutId);
+            
+            // Reset dragging state
+            setDraggingExerciseId(null);
+            setDraggingIndex(null);
+            setDraggingSection(null);
+            setDraggingWorkoutId(null);
+            setPreviewInsertIndex(null);
+            lastReorderIndex.current = null;
+            dragY.setValue(0);
+          });
+        } else {
+          // Reset if something went wrong
+          dragY.setValue(0);
+          setDraggingExerciseId(null);
+          setDraggingIndex(null);
+          setDraggingSection(null);
+          setDraggingWorkoutId(null);
+          setPreviewInsertIndex(null);
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (draggingExerciseIdRef.current) {
+          // Animate back to original position
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 300,
+            friction: 30,
+          }).start(() => {
+            dragY.flattenOffset();
+            dragPosition.current = 0;
+          });
+          
+          setDraggingExerciseId(null);
+          setDraggingIndex(null);
+          setDraggingSection(null);
+          setDraggingWorkoutId(null);
+          setPreviewInsertIndex(null);
+          lastReorderIndex.current = null;
+          dragY.setValue(0);
+        }
+      },
+    });
+  }, []); // Empty deps - use refs for state
+
+  // Immediate reorder for visual feedback during drag
+  const reorderExerciseImmediate = (workoutId: string, exerciseId: string, direction: 'up' | 'down', targetIndex: number, currentIndex: number) => {
+    const workout = getWorkoutById(workoutId);
+    const section = draggingSectionRef.current;
+    if (!workout || !section) return;
+    
+    // Get template exercises for this workout to identify which exercises are templates
+    const defaultTemplates = ['warmup', 'cooldown'];
+    const stretchTemplateId = getStretchTemplateIdForWorkoutType(workout.workoutType);
+    if (stretchTemplateId) {
+      defaultTemplates.push(stretchTemplateId);
+    }
+    const allTemplateIds = [...defaultTemplates, ...(workout.templateSections || [])];
+    const uniqueTemplateIds = Array.from(new Set(allTemplateIds));
+    
+    const templateExercises: Exercise[] = [];
+    const templateExerciseIds = new Set<string>();
+    uniqueTemplateIds.forEach(templateId => {
+      const template = getTemplateById(templateId);
+      if (template) {
+        template.exercises.forEach(ex => {
+          templateExercises.push(ex);
+          if (ex.id) templateExerciseIds.add(ex.id);
+        });
+      }
+    });
+
+    // Get deleted template IDs
+    const deletedTemplateIds = new Set<string>();
+    workout.exercises.forEach(ex => {
+      if (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__')) {
+        const originalId = ex.name.replace('__DELETED__', '');
+        deletedTemplateIds.add(originalId);
+      }
+    });
+
+    // Get active workout exercises (excluding markers and deleted template exercises)
+    const activeWorkoutExercises = workout.exercises.filter(
+      ex => {
+        // Exclude delete markers
+        if (ex.name?.startsWith('__DELETED__') || ex.id?.startsWith('__DELETED_MARKER__')) {
+          return false;
+        }
+        // Exclude dynamic exercises that match deleted template IDs (they were deleted)
+        if (ex.id && deletedTemplateIds.has(ex.id)) {
+          return false;
+        }
+        return true;
+      }
+    );
+    const workoutExerciseIds = new Set(activeWorkoutExercises.map(ex => ex.id));
+
+    // Get all exercises in this section (both from workout and templates)
+    const getSectionExercises = () => {
+      if (section === 'warmup') {
+        const workoutWarmup = activeWorkoutExercises.filter(ex => 
+          ex.section === 'warmup' || (!ex.section && ex.id && !templateExerciseIds.has(ex.id))
+        );
+        const templateWarmup = templateExercises.filter(ex => {
+          const exId = ex.id || '';
+          return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId) && 
+                 (ex.section === 'warmup' || !ex.section);
+        });
+        return [...workoutWarmup, ...templateWarmup];
+      } else {
+        const workoutSection = activeWorkoutExercises.filter(ex => ex.section === section);
+        const templateSection = templateExercises.filter(ex => {
+          const exId = ex.id || '';
+          return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId) && ex.section === section;
+        });
+        return [...workoutSection, ...templateSection];
+      }
+    };
+
+    const sectionExercises = getSectionExercises();
+    const exerciseIndex = sectionExercises.findIndex(ex => ex.id === exerciseId);
+    if (exerciseIndex === -1) return;
+
+    // Create new order
+    const newExercises = [...sectionExercises];
+    const [movedExercise] = newExercises.splice(exerciseIndex, 1);
+    newExercises.splice(targetIndex, 0, movedExercise);
+
+    // Now update workout.exercises to reflect the new order
+    // For template exercises that are being reordered, convert them to dynamic exercises
+    const otherExercises = activeWorkoutExercises.filter(ex => {
+      if (section === 'warmup') {
+        return ex.section !== 'warmup' && ex.section !== undefined;
+      }
+      return ex.section !== section;
+    });
+
+    // Convert reordered exercises to dynamic exercises in workout.exercises
+    // BUT: exclude any exercises that are marked as deleted
+    const reorderedDynamicExercises = newExercises
+      .filter(ex => {
+        // Don't include exercises that are marked as deleted
+        const exId = ex.id || '';
+        return !deletedTemplateIds.has(exId);
+      })
+      .map(ex => {
+        // If it's a template exercise, create a dynamic version
+        if (templateExerciseIds.has(ex.id || '')) {
+          return {
+            ...ex,
+            section: section,
+          };
+        }
+        // If it's already a dynamic exercise, ensure it has the right section
+        return {
+          ...ex,
+          section: section,
+        };
+      });
+
+    // Filter out exercises that are now in reorderedDynamicExercises
+    const remainingOtherExercises = otherExercises.filter(ex => {
+      return !reorderedDynamicExercises.some(reordered => reordered.id === ex.id);
+    });
+
+    // Preserve all delete markers (they should stay in workout.exercises)
+    const deleteMarkers = workout.exercises.filter(ex => 
+      ex.id?.startsWith('__DELETED_MARKER__') || 
+      (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__'))
+    );
+
+    // Combine: other sections first, then reordered section exercises, then delete markers
+    workout.exercises = [...remainingOtherExercises, ...reorderedDynamicExercises, ...deleteMarkers];
+    
+    // Update state immediately for visual feedback
+    setWorkouts([...getAllWorkouts()]);
+    setDraggingIndex(targetIndex);
+  };
+
+  // Save the final exercise order
+  const saveExerciseOrder = async (workoutId: string) => {
+    try {
+      const workout = getWorkoutById(workoutId);
+      if (!workout) return;
+      
+      // Ensure delete markers are preserved
+      const deleteMarkers = workout.exercises.filter(ex => 
+        ex.id?.startsWith('__DELETED_MARKER__') || 
+        (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__'))
+      );
+      
+      // Get all non-marker exercises
+      const nonMarkerExercises = workout.exercises.filter(ex => 
+        !ex.id?.startsWith('__DELETED_MARKER__') && 
+        !(ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__'))
+      );
+      
+      // Combine: exercises first, then markers
+      workout.exercises = [...nonMarkerExercises, ...deleteMarkers];
+      
+      await updateWorkout(workoutId, {
+        exercises: workout.exercises,
+      });
+      
+      setWorkouts(getAllWorkouts());
+    } catch (error: any) {
+      console.error('Error saving exercise order:', error);
+    }
+  };
+
 
   return (
     <ScrollView 
@@ -107,6 +1043,7 @@ export default function WorkoutScreen() {
         styles.contentContainer,
         isTablet && styles.contentContainerTablet
       ]}
+      scrollEnabled={!draggingExerciseId}
     >
       <View style={[styles.header, isTablet && styles.headerTablet]}>
         <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
@@ -121,13 +1058,18 @@ export default function WorkoutScreen() {
       <View style={[styles.dateNavigation, isTablet && styles.dateNavigationTablet]}>
         <TouchableOpacity 
           onPress={goToPreviousDate}
-          style={[styles.arrowButton, isTablet && styles.arrowButtonTablet]}
+          disabled={!canGoPrevious}
+          style={[
+            styles.arrowButton, 
+            isTablet && styles.arrowButtonTablet,
+            !canGoPrevious && styles.arrowButtonDisabled
+          ]}
           activeOpacity={0.7}
         >
           <Ionicons 
             name="chevron-back" 
             size={isTablet ? 32 : 24} 
-            color={Colors.primary} 
+            color={canGoPrevious ? Colors.primary : Colors.neutralMedium} 
           />
         </TouchableOpacity>
         
@@ -139,16 +1081,50 @@ export default function WorkoutScreen() {
         
         <TouchableOpacity 
           onPress={goToNextDate}
-          style={[styles.arrowButton, isTablet && styles.arrowButtonTablet]}
+          disabled={!canGoNext}
+          style={[
+            styles.arrowButton, 
+            isTablet && styles.arrowButtonTablet,
+            !canGoNext && styles.arrowButtonDisabled
+          ]}
           activeOpacity={0.7}
         >
           <Ionicons 
             name="chevron-forward" 
             size={isTablet ? 32 : 24} 
-            color={Colors.primary} 
+            color={canGoNext ? Colors.primary : Colors.neutralMedium} 
           />
         </TouchableOpacity>
       </View>
+
+      {/* Edit Button - Prominent placement */}
+      {isCoachUser && (
+        <TouchableOpacity
+          onPress={toggleEditMode}
+          style={[
+            styles.editButtonProminent,
+            isTablet && styles.editButtonProminentTablet,
+            isEditMode && styles.editButtonProminentActive,
+            !canEditDate && styles.editButtonProminentDisabled
+          ]}
+          activeOpacity={0.7}
+          disabled={!canEditDate && !isEditMode}
+        >
+          <Ionicons
+            name={isEditMode ? "checkmark-circle" : "create-outline"}
+            size={isTablet ? 24 : 20}
+            color={isEditMode ? Colors.white : (canEditDate ? Colors.primary : Colors.neutralMedium)}
+          />
+          <Text style={[
+            styles.editButtonProminentText,
+            isTablet && styles.editButtonProminentTextTablet,
+            isEditMode && styles.editButtonProminentTextActive,
+            !canEditDate && !isEditMode && styles.editButtonProminentTextDisabled
+          ]}>
+            {isEditMode ? 'Done Editing' : 'Edit Workout'}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Today Button */}
       {!isToday(selectedDate) && (
@@ -203,6 +1179,18 @@ export default function WorkoutScreen() {
           <Text style={[baseStyles.text, styles.cardText]}>
             No practice today
           </Text>
+          {isEditMode && isCoachUser && canEditDate && (
+            <TouchableOpacity
+              onPress={() => openWorkoutTypeSelector()}
+              style={[styles.addWorkoutButton, isTablet && styles.addWorkoutButtonTablet]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={isTablet ? 28 : 24} color={Colors.white} />
+              <Text style={[baseStyles.text, styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet]}>
+                Add Workout
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         selectedDateWorkouts.map(workout => {
@@ -231,8 +1219,34 @@ export default function WorkoutScreen() {
             }
           });
 
-          // Merge template exercises with dynamic exercises
-          const allExercises = [...workout.exercises, ...templateExercises];
+          // Filter out deleted template exercises (marked with __DELETED__ prefix)
+          const deletedTemplateIds = new Set<string>();
+          workout.exercises.forEach(ex => {
+            if (ex.name?.startsWith('__DELETED__') && ex.id?.startsWith('__DELETED_MARKER__')) {
+              // Extract the original exercise ID from the marker name
+              const originalId = ex.name.replace('__DELETED__', '');
+              deletedTemplateIds.add(originalId);
+            }
+          });
+          
+          // Remove deleted marker exercises from workout.exercises (they're just markers, not real exercises)
+          const activeWorkoutExercises = workout.exercises.filter(
+            ex => !ex.name?.startsWith('__DELETED__') && !ex.id?.startsWith('__DELETED_MARKER__')
+          );
+          
+          // Get IDs of exercises that are already in workout.exercises (these override templates)
+          const workoutExerciseIds = new Set(activeWorkoutExercises.map(ex => ex.id));
+          
+          // Filter template exercises to exclude deleted ones and ones already in workout
+          const activeTemplateExercises = templateExercises.filter(
+            ex => {
+              const exId = ex.id || '';
+              return !deletedTemplateIds.has(exId) && !workoutExerciseIds.has(exId);
+            }
+          );
+          
+          // Merge template exercises with dynamic exercises (workout exercises take precedence)
+          const allExercises = [...activeWorkoutExercises, ...activeTemplateExercises];
 
           // Group exercises by section
           // Dynamic exercises without a section default to warmup
@@ -271,25 +1285,42 @@ export default function WorkoutScreen() {
 
           return (
             <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet]}>
-              <Text style={[baseStyles.text, styles.cardTitle]}>
-                {workout.name}
-              </Text>
-              {workout.description && (
-                <Text style={[baseStyles.text, styles.cardText]}>
-                  {workout.description}
-                </Text>
-              )}
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleContainer}>
+                  <Text style={[baseStyles.text, styles.cardTitle]}>
+                    {workout.name}
+                  </Text>
+                  {workout.description && (
+                    <Text style={[baseStyles.text, styles.cardText]}>
+                      {workout.description}
+                    </Text>
+                  )}
+                </View>
+                {isEditMode && isCoachUser && canEditDate && (
+                  <TouchableOpacity
+                    onPress={() => openWorkoutTypeSelector(workout)}
+                    style={[styles.editWorkoutButton, isTablet && styles.editWorkoutButtonTablet]}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="create-outline" size={isTablet ? 24 : 20} color={Colors.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
               {/* Exercise Sections */}
               {sections.map(section => {
                 const isExpanded = isSectionExpanded(workout.id, section.key);
                 const isWorkoutSection = section.key === 'workout';
                 
-                // For workout section: show section if there are exercises OR if it's a spreadsheet/longrun type
-                // But don't show regular exercises if it's spreadsheet or longrun type
-                const shouldShowSection = isWorkoutSection 
-                  ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun) || isSpreadsheet || isLongRun
-                  : section.exercises.length > 0;
+                // Show section if:
+                // 1. In edit mode (so user can add exercises to empty sections)
+                // 2. OR section has exercises
+                // 3. OR it's workout section with spreadsheet/longrun type
+                const shouldShowSection = isEditMode && isCoachUser && canEditDate
+                  ? true // Always show in edit mode
+                  : isWorkoutSection 
+                    ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun) || isSpreadsheet || isLongRun
+                    : section.exercises.length > 0;
                 
                 // For workout section with spreadsheet/longrun: don't show regular exercises
                 const shouldShowRegularExercises = isWorkoutSection 
@@ -324,6 +1355,7 @@ export default function WorkoutScreen() {
                             <Spreadsheet
                               workoutType={workout.workoutType}
                               isTablet={isTablet}
+                              isEditMode={isEditMode}
                             />
                           )}
                           {/* Long Run View ONLY for 'longrun' type */}
@@ -374,19 +1406,66 @@ export default function WorkoutScreen() {
                           })()}
                           {/* Only show regular exercises if NOT spreadsheet or longrun type */}
                           {shouldShowRegularExercises && section.exercises.map((exercise, index) => {
+                            // Create unique key to avoid duplicate key warnings
+                            const uniqueKey = `${exercise.id || 'exercise'}-${index}-${workout.id}`;
                             // Check if this is a grouped workout exercise
                             const isGroupedWorkout = exercise.group && exercise.pace && section.key === 'workout';
                             // Check if this is a grouped post-workout exercise (strides)
                             const isGroupedPostWorkout = exercise.group && section.key === 'postworkout' && exercise.reps;
+                            // Allow editing for warmup and postworkout sections (including template exercises)
+                            const canEditExercise = isEditMode && isCoachUser && canEditDate && 
+                              (section.key === 'warmup' || section.key === 'postworkout');
+                            const isDragging = draggingExerciseId === exercise.id;
+                            const isBeingDraggedOver = draggingExerciseId && draggingExerciseId !== exercise.id && 
+                              draggingSection === section.key && draggingWorkoutId === workout.id;
+                            
+                            // Check if insertion indicator should show before this item
+                            const showInsertIndicatorBefore = draggingExerciseId && 
+                              draggingSection === section.key && 
+                              draggingWorkoutId === workout.id &&
+                              previewInsertIndex !== null &&
+                              previewInsertIndex === index;
+                            
+                            const animatedStyle = isDragging ? {
+                              transform: [{ translateY: dragY }],
+                              zIndex: 1000,
+                              elevation: 10,
+                            } : {};
                             
                             return (
-                              <View 
-                                key={exercise.id || index} 
-                                style={[
-                                  styles.exerciseItem,
-                                  index === section.exercises.length - 1 && styles.exerciseItemLast
-                                ]}
-                              >
+                              <View key={uniqueKey} style={{ width: '100%' }}>
+                                {/* Insertion indicator - white space showing where item will be placed */}
+                                {showInsertIndicatorBefore && (
+                                  <View style={styles.insertionIndicator} />
+                                )}
+                                <Animated.View 
+                                  style={[
+                                    styles.exerciseItem,
+                                    index === section.exercises.length - 1 && styles.exerciseItemLast,
+                                    canEditExercise && styles.exerciseItemEditable,
+                                    isDragging && styles.exerciseItemDragging,
+                                    isBeingDraggedOver && styles.exerciseItemDragOver,
+                                    animatedStyle
+                                  ]}
+                                  {...(isDragging ? globalPanResponder.panHandlers : {})}
+                                >
+                                {canEditExercise && (
+                                  <TouchableOpacity
+                                    onPress={() => deleteExercise(workout.id, exercise.id!)}
+                                    style={styles.deleteExerciseButton}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={Colors.secondary} />
+                                  </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                  onPress={canEditExercise && !isDragging ? () => openExerciseEditor(workout.id, section.key as 'warmup' | 'postworkout', exercise) : undefined}
+                                  onLongPress={canEditExercise ? () => handleExerciseLongPress(exercise.id!, index, section.key, workout.id) : undefined}
+                                  delayLongPress={400}
+                                  style={[styles.exerciseContent, canEditExercise && styles.exerciseContentEditable]}
+                                  activeOpacity={canEditExercise && !isDragging ? 0.7 : 1}
+                                  disabled={!canEditExercise || isDragging}
+                                >
                                 {isGroupedWorkout ? (
                                   // Grouped workout display
                                   <>
@@ -462,9 +1541,34 @@ export default function WorkoutScreen() {
                                     )}
                                   </>
                                 )}
+                                </TouchableOpacity>
+                              </Animated.View>
                               </View>
                             );
-                          })}
+                          }).concat(
+                            // Show insertion indicator at the end if dragging to the last position
+                            draggingExerciseId && 
+                            draggingSection === section.key && 
+                            draggingWorkoutId === workout.id &&
+                            previewInsertIndex !== null &&
+                            previewInsertIndex === section.exercises.length ? (
+                              <View key="insertion-indicator-end" style={styles.insertionIndicator} />
+                            ) : null
+                          )}
+                          {/* Add Exercise Button (only for warmup and postworkout in edit mode) */}
+                          {isEditMode && isCoachUser && canEditDate && 
+                            (section.key === 'warmup' || section.key === 'postworkout') && (
+                            <TouchableOpacity
+                              onPress={() => openExerciseEditor(workout.id, section.key as 'warmup' | 'postworkout')}
+                              style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                              <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
+                                Add Exercise
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </>
                       )}
                     </View>
@@ -475,6 +1579,244 @@ export default function WorkoutScreen() {
           );
         })
       )}
+
+      {/* Add Workout Button (when workouts exist and in edit mode) */}
+      {isEditMode && isCoachUser && canEditDate && selectedDateWorkouts.length > 0 && (
+        <TouchableOpacity
+          onPress={() => openWorkoutTypeSelector()}
+          style={[styles.addWorkoutButton, styles.addWorkoutButtonFloating, isTablet && styles.addWorkoutButtonTablet]}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add" size={isTablet ? 28 : 24} color={Colors.white} />
+          <Text style={[baseStyles.text, styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet]}>
+            Add Workout
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Exercise Editor Modal */}
+      <Modal
+        visible={exerciseModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setExerciseModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                {editingExercise ? 'Edit Exercise' : 'Add Exercise'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setExerciseModalVisible(false)}
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScrollView}>
+              {/* Exercise Name */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Exercise Name *
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={exerciseName}
+                  onChangeText={setExerciseName}
+                  placeholder="Enter exercise name"
+                  placeholderTextColor={Colors.neutralMedium}
+                />
+              </View>
+
+              {/* Exercise Details */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Reps (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={exerciseReps}
+                  onChangeText={setExerciseReps}
+                  placeholder="Enter number of reps"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Sets (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={exerciseSets}
+                  onChangeText={setExerciseSets}
+                  placeholder="Enter number of sets"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Duration (minutes, Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={exerciseDuration}
+                  onChangeText={setExerciseDuration}
+                  placeholder="Enter duration in minutes"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Distance (meters, Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={exerciseDistance}
+                  onChangeText={setExerciseDistance}
+                  placeholder="Enter distance in meters"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Exercise Notes */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Notes (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, styles.modalTextArea, isTablet && styles.modalInputTablet]}
+                  value={exerciseNotes}
+                  onChangeText={setExerciseNotes}
+                  placeholder="Enter notes"
+                  placeholderTextColor={Colors.neutralMedium}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Save Button */}
+              <TouchableOpacity
+                onPress={saveExercise}
+                style={[styles.modalSaveButton, isTablet && styles.modalSaveButtonTablet]}
+                activeOpacity={0.7}
+                disabled={!exerciseName.trim()}
+              >
+                <Text style={[baseStyles.text, styles.modalSaveButtonText, isTablet && styles.modalSaveButtonTextTablet]}>
+                  {editingExercise ? 'Update Exercise' : 'Add Exercise'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Workout Type Selection Modal */}
+      <Modal
+        visible={workoutTypeModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setWorkoutTypeModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                {editingWorkout ? 'Edit Workout' : 'Create Workout'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setWorkoutTypeModalVisible(false)}
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScrollView}>
+              {/* Workout Name */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Workout Name
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={workoutName}
+                  onChangeText={setWorkoutName}
+                  placeholder="Enter workout name"
+                  placeholderTextColor={Colors.neutralMedium}
+                />
+              </View>
+
+              {/* Workout Description */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Description (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, styles.modalTextArea, isTablet && styles.modalInputTablet]}
+                  value={workoutDescription}
+                  onChangeText={setWorkoutDescription}
+                  placeholder="Enter description"
+                  placeholderTextColor={Colors.neutralMedium}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Workout Type Selection */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Workout Type
+                </Text>
+                <View style={styles.workoutTypeButtons}>
+                  {(['workout', 'longrun', 'recovery'] as const).map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      onPress={() => setSelectedWorkoutType(type)}
+                      style={[
+                        styles.workoutTypeButton,
+                        isTablet && styles.workoutTypeButtonTablet,
+                        selectedWorkoutType === type && styles.workoutTypeButtonActive
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.workoutTypeButtonText,
+                        isTablet && styles.workoutTypeButtonTextTablet,
+                        selectedWorkoutType === type && styles.workoutTypeButtonTextActive
+                      ]}>
+                        {type === 'workout' ? 'Workout' : type === 'longrun' ? 'Long Run' : 'Recovery'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Save Button */}
+              <TouchableOpacity
+                onPress={saveWorkout}
+                style={[styles.modalSaveButton, isTablet && styles.modalSaveButtonTablet]}
+                activeOpacity={0.7}
+                disabled={!workoutName.trim() || !selectedWorkoutType}
+              >
+                <Text style={[baseStyles.text, styles.modalSaveButtonText, isTablet && styles.modalSaveButtonTextTablet]}>
+                  {editingWorkout ? 'Update Workout' : 'Create Workout'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -595,6 +1937,12 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: 16,
     minWidth: 60,
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
+    backgroundColor: Colors.neutralLight,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   dateDisplay: {
     flex: 1,
@@ -920,6 +2268,340 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  cardTitleContainer: {
+    flex: 1,
+  },
+  editWorkoutButton: {
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.neutralBackground,
+    marginLeft: 12,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  editWorkoutButtonTablet: {
+    padding: 12,
+    borderRadius: 12,
+  },
+  addWorkoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  addWorkoutButtonFloating: {
+    marginTop: 0,
+    marginBottom: 20,
+  },
+  addWorkoutButtonTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+  },
+  addWorkoutButtonText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.3,
+  },
+  addWorkoutButtonTextTablet: {
+    fontSize: 18,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '90%',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalContentTablet: {
+    padding: 32,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxWidth: 600,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    paddingRight: 40,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.primary,
+    flex: 1,
+  },
+  modalTitleTablet: {
+    fontSize: 28,
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.neutralBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButtonTablet: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  modalScrollView: {
+    maxHeight: 500,
+  },
+  modalInputGroup: {
+    marginBottom: 24,
+  },
+  modalLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  modalLabelTablet: {
+    fontSize: 18,
+  },
+  modalInput: {
+    backgroundColor: Colors.neutralBackground,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    color: Colors.text,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  modalInputTablet: {
+    padding: 16,
+    fontSize: 18,
+    borderRadius: 14,
+  },
+  modalTextArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  workoutTypeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  workoutTypeButton: {
+    flex: 1,
+    minWidth: 100,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  workoutTypeButtonTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+  },
+  workoutTypeButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  workoutTypeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  workoutTypeButtonTextTablet: {
+    fontSize: 18,
+  },
+  workoutTypeButtonTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  modalSaveButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalSaveButtonTablet: {
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+  },
+  modalSaveButtonText: {
+    color: Colors.white,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  modalSaveButtonTextTablet: {
+    fontSize: 20,
+  },
+  editButtonProminent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    gap: 8,
+  },
+  editButtonProminentTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    marginBottom: 24,
+    gap: 10,
+  },
+  editButtonProminentActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  editButtonProminentDisabled: {
+    opacity: 0.5,
+    borderColor: Colors.neutralMedium,
+  },
+  editButtonProminentText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 0.3,
+  },
+  editButtonProminentTextTablet: {
+    fontSize: 18,
+  },
+  editButtonProminentTextActive: {
+    color: Colors.white,
+  },
+  editButtonProminentTextDisabled: {
+    color: Colors.neutralMedium,
+  },
+  exerciseItemEditable: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    position: 'relative',
+  },
+  exerciseContent: {
+    flex: 1,
+  },
+  exerciseContentEditable: {
+    paddingRight: 40,
+  },
+  deleteExerciseButton: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    padding: 8,
+    zIndex: 10,
+  },
+  addExerciseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.neutralBackground,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    borderStyle: 'dashed',
+    gap: 8,
+  },
+  addExerciseButtonTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    gap: 10,
+  },
+  addExerciseButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 0.2,
+  },
+  addExerciseButtonTextTablet: {
+    fontSize: 18,
+  },
+  exerciseItemDragging: {
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    opacity: 0.9,
+  },
+  exerciseItemDragOver: {
+    borderTopWidth: 3,
+    borderTopColor: Colors.primary,
+  },
+  insertionIndicator: {
+    height: 4,
+    backgroundColor: Colors.primary,
+    marginVertical: 8,
+    borderRadius: 2,
+    opacity: 0.6,
+    marginHorizontal: 12,
   },
 });
 

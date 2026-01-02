@@ -69,3 +69,11 @@ export interface Message {
   createdAt: Date;
 }
 
+export interface BoardMessage {
+  id: string;
+  header: string;
+  author: string;
+  content: string;
+  createdAt: Date;
+}
+

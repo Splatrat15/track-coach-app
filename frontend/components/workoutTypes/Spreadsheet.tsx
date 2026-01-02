@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
 import { getAllAthletes, getEffectiveRank, initializeAthletes } from '../../data/athletes';
 import { Athlete } from '../../data/types';
@@ -8,6 +8,7 @@ import { Athlete } from '../../data/types';
 interface SpreadsheetProps {
   workoutType?: 'workout' | 'longrun' | 'recovery';
   isTablet: boolean;
+  isEditMode?: boolean;
 }
 
 /**
@@ -195,7 +196,7 @@ function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Array<{
   return columns;
 }
 
-export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps) {
+export default function Spreadsheet({ workoutType, isTablet, isEditMode = false }: SpreadsheetProps) {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
@@ -204,10 +205,28 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
   // Track which dropdown is currently open: key format is "rowIndex-columnIndex"
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   
+  // Drag and drop state
+  const [draggingAthleteId, setDraggingAthleteId] = useState<string | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const dragY = useRef(new Animated.Value(0)).current;
+  const dragPosition = useRef(0);
+  
   // Single ref for the main horizontal scroll
   const mainScrollRef = useRef<ScrollView>(null);
   // Ref for the dropdown scroll view
   const dropdownScrollRef = useRef<ScrollView>(null);
+  
+  // Refs for drag state to access in PanResponder
+  const draggingAthleteIdRef = useRef(draggingAthleteId);
+  const draggingIndexRef = useRef(draggingIndex);
+  const isTabletRef = useRef(isTablet);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    draggingAthleteIdRef.current = draggingAthleteId;
+    draggingIndexRef.current = draggingIndex;
+    isTabletRef.current = isTablet;
+  }, [draggingAthleteId, draggingIndex, isTablet]);
 
   const loadAthletes = useCallback(async () => {
     await initializeAthletes();
@@ -245,6 +264,95 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
       }, 100);
     }
   }, [openDropdown]);
+  
+  // Handle long press to start dragging
+  const handleAthleteLongPress = (athleteId: string, index: number) => {
+    if (!isEditMode) return;
+    setDraggingAthleteId(athleteId);
+    setDraggingIndex(index);
+    dragY.setValue(0);
+    dragPosition.current = 0;
+  };
+  
+  // Pan responder for drag and drop
+  const panResponder = useMemo(() => {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => !!draggingAthleteIdRef.current,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return !!draggingAthleteIdRef.current && Math.abs(gestureState.dy) > 2;
+      },
+      onPanResponderGrant: (evt) => {
+        if (draggingAthleteIdRef.current) {
+          dragY.setOffset(0);
+          dragY.setValue(0);
+        }
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Just update the visual position - NO reordering during drag
+        dragY.setValue(gestureState.dy);
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        const athleteId = draggingAthleteIdRef.current;
+        const currentIndex = draggingIndexRef.current;
+        
+        if (athleteId && currentIndex !== null) {
+          // Calculate target index based on drag distance
+          // Each row is 80px tall (or 90px on tablet), but we have 2 rows per athlete (time + blank)
+          // So each athlete takes 160px (or 180px on tablet)
+          const rowHeight = isTabletRef.current ? 90 : 80;
+          const athleteHeight = rowHeight * 2; // 2 rows per athlete
+          const itemsMoved = Math.round(gestureState.dy / athleteHeight);
+          const targetIndex = Math.max(0, Math.min(displayAthletes.length - 1, currentIndex + itemsMoved));
+          
+          // Only reorder if position actually changed
+          if (targetIndex !== currentIndex && targetIndex >= 0 && targetIndex < displayAthletes.length) {
+            // Reorder the athletes array
+            const newOrder = [...displayAthletes];
+            const [movedAthlete] = newOrder.splice(currentIndex, 1);
+            newOrder.splice(targetIndex, 0, movedAthlete);
+            setFilteredAthletesOrder(newOrder);
+          }
+          
+          // Animate to final position (0) smoothly
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 300,
+            friction: 30,
+          }).start(() => {
+            dragY.flattenOffset();
+            dragPosition.current = 0;
+            setDraggingAthleteId(null);
+            setDraggingIndex(null);
+            dragY.setValue(0);
+          });
+        } else {
+          // Reset if something went wrong
+          dragY.setValue(0);
+          setDraggingAthleteId(null);
+          setDraggingIndex(null);
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (draggingAthleteIdRef.current) {
+          // Animate back to original position
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 300,
+            friction: 30,
+          }).start(() => {
+            dragY.flattenOffset();
+            dragPosition.current = 0;
+          });
+          
+          setDraggingAthleteId(null);
+          setDraggingIndex(null);
+          dragY.setValue(0);
+        }
+      },
+    });
+  }, []); // Empty deps - use refs for state
 
   // Generate workout columns based on selected rank
   const workoutColumns = useMemo(() => {
@@ -252,6 +360,8 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
     return generateWorkoutColumns(selectedRank);
   }, [selectedRank]);
 
+  const [filteredAthletesOrder, setFilteredAthletesOrder] = useState<Athlete[]>([]);
+  
   const filteredAthletes = useMemo(() => {
     if (!athletes || athletes.length === 0) {
       return [];
@@ -263,7 +373,7 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
     }
     
     // When rank filter is selected (with or without gender), apply stricter filtering
-    return athletes.filter(athlete => {
+    const filtered = athletes.filter(athlete => {
       // Exclude athletes with missing required fields when rank filter is active
       if (athlete.gender === null || athlete.gender === undefined) {
         return false;
@@ -293,7 +403,17 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
       
       return true;
     });
+    
+    return filtered;
   }, [athletes, selectedRank, selectedGender, workoutType]);
+  
+  // Update filteredAthletesOrder when filteredAthletes changes
+  useEffect(() => {
+    setFilteredAthletesOrder(filteredAthletes);
+  }, [filteredAthletes]);
+  
+  // Use filteredAthletesOrder for display to preserve drag order
+  const displayAthletes = filteredAthletesOrder;
 
   return (
     <View style={[
@@ -367,7 +487,7 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                 <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>Name</Text>
               </View>
               {/* Data Rows: Names */}
-              {filteredAthletes.length === 0 ? (
+              {displayAthletes.length === 0 ? (
                 <View style={[styles.nameCell, isTablet && styles.nameCellTablet]}>
                   <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
                     No athletes found
@@ -375,13 +495,13 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                 </View>
               ) : (() => {
               // Create alternating rows: time, blank, time, blank... (2 rows per athlete)
-              const totalRows = filteredAthletes.length * 2;
+              const totalRows = displayAthletes.length * 2;
               const rows: (Athlete | null)[] = [];
               for (let i = 0; i < totalRows; i++) {
                 if (i % 2 === 0) {
                   // Even indices: time rows (athletes)
                   const athleteIndex = i / 2;
-                  rows.push(athleteIndex < filteredAthletes.length ? filteredAthletes[athleteIndex] : null);
+                  rows.push(athleteIndex < displayAthletes.length ? displayAthletes[athleteIndex] : null);
                 } else {
                   // Odd indices: blank rows
                   rows.push(null);
@@ -392,10 +512,17 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                 const isBlank = rowData === null;
                 const isLast = index === totalRows - 1;
                 const isFirst = index === 0;
+                const athleteIndex = Math.floor(index / 2);
+                const isDragging = draggingAthleteId === rowData?.id;
+                const animatedStyle = isDragging ? {
+                  transform: [{ translateY: dragY }],
+                  zIndex: 1000,
+                  elevation: 10,
+                } : {};
                 
                 return (
-                  <View 
-                    key={`name-row-${index}`}
+                  <Animated.View 
+                    key={`name-row-${rowData?.id || index}-${index}`}
                     style={[
                       styles.nameRowWrapper,
                       isTablet && styles.nameRowWrapperTablet,
@@ -404,14 +531,22 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                         styles.lastNameRowWrapper,
                         isTablet && styles.lastNameRowWrapperTablet
                       ],
-                      !isBlank && styles.timeRowBackground
+                      !isBlank && styles.timeRowBackground,
+                      animatedStyle
                     ]}
+                    {...(isDragging ? panResponder.panHandlers : {})}
                   >
-                    <View style={[
-                      styles.nameCell, 
-                      isTablet && styles.nameCellTablet,
-                      isLast && styles.lastNameCell
-                    ]}>
+                    <TouchableOpacity
+                      activeOpacity={isEditMode ? 0.7 : 1}
+                      onLongPress={() => !isBlank && rowData ? handleAthleteLongPress(rowData.id, athleteIndex) : undefined}
+                      disabled={!isEditMode || isBlank}
+                      style={[
+                        styles.nameCell, 
+                        isTablet && styles.nameCellTablet,
+                        isLast && styles.lastNameCell,
+                        isDragging && styles.nameCellDragging
+                      ]}
+                    >
                       <View style={[
                         styles.nameRowDivider,
                         isLast && styles.lastRowDivider
@@ -419,16 +554,26 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                       <View style={styles.nameColumnDivider} />
                       {!isBlank && rowData && (
                         <View style={styles.nameTextContainer}>
-                          <Text style={[baseStyles.text, styles.tableCell, styles.nameCellText, styles.firstNameText, isTablet && styles.tableCellTablet]}>
-                            {rowData.firstName}
-                          </Text>
-                          <Text style={[baseStyles.text, styles.tableCell, styles.nameCellText, styles.lastNameText, isTablet && styles.tableCellTablet]}>
-                            {rowData.lastName}
-                          </Text>
+                          {isEditMode && (
+                            <Ionicons 
+                              name="reorder-three-outline" 
+                              size={isTablet ? 20 : 18} 
+                              color={Colors.neutralMedium} 
+                              style={styles.dragHandle}
+                            />
+                          )}
+                          <View style={styles.nameTextContent}>
+                            <Text style={[baseStyles.text, styles.tableCell, styles.nameCellText, styles.firstNameText, isTablet && styles.tableCellTablet]}>
+                              {rowData.firstName}
+                            </Text>
+                            <Text style={[baseStyles.text, styles.tableCell, styles.nameCellText, styles.lastNameText, isTablet && styles.tableCellTablet]}>
+                              {rowData.lastName}
+                            </Text>
+                          </View>
                         </View>
                       )}
-                    </View>
-                  </View>
+                    </TouchableOpacity>
+                  </Animated.View>
                 );
               }).concat(
                 // Cooldown row
@@ -507,15 +652,15 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
               )}
 
               {/* Data Rows */}
-              {filteredAthletes.length === 0 ? null : (() => {
+              {displayAthletes.length === 0 ? null : (() => {
                 // Create alternating rows: time, blank, time, blank... (2 rows per athlete)
-                const totalRows = filteredAthletes.length * 2;
+                const totalRows = displayAthletes.length * 2;
                 const rows: (Athlete | null)[] = [];
                 for (let i = 0; i < totalRows; i++) {
                   if (i % 2 === 0) {
                     // Even indices: time rows (athletes)
                     const athleteIndex = i / 2;
-                    rows.push(athleteIndex < filteredAthletes.length ? filteredAthletes[athleteIndex] : null);
+                    rows.push(athleteIndex < displayAthletes.length ? displayAthletes[athleteIndex] : null);
                   } else {
                     // Odd indices: blank rows
                     rows.push(null);
@@ -527,6 +672,13 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                   const isLast = index === totalRows - 1;
                   const isFirst = index === 0;
                   const goal1600m = rowData?.goal1600m || '';
+                  const athleteIndex = Math.floor(index / 2);
+                  const isDragging = draggingAthleteId === rowData?.id;
+                  const animatedStyle = isDragging ? {
+                    transform: [{ translateY: dragY }],
+                    zIndex: 1000,
+                    elevation: 10,
+                  } : {};
                   
                   // Helper function to get input key for a cell
                   const getInputKey = (colIndex: number) => `${index}-${colIndex}`;
@@ -550,14 +702,15 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                   };
                   
                   return (
-                    <View 
-                      key={`data-row-${index}`} 
+                    <Animated.View 
+                      key={`data-row-${rowData?.id || index}-${index}`} 
                       style={[
                         styles.tableRow, 
                         isTablet && styles.tableRowTablet,
                         isFirst && styles.firstTableRow,
                         isLast && [styles.lastTableRow, isTablet && styles.lastTableRowTablet],
-                        !isBlank && styles.timeRowBackground
+                        !isBlank && styles.timeRowBackground,
+                        animatedStyle
                       ]}
                     >
                       <View style={[
@@ -606,7 +759,7 @@ export default function Spreadsheet({ workoutType, isTablet }: SpreadsheetProps)
                           </View>
                         );
                       })}
-                    </View>
+                    </Animated.View>
                   );
                 }).concat(
                   // Cooldown row
@@ -1056,8 +1209,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   nameTextContainer: {
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    width: '100%',
+  },
+  nameTextContent: {
+    flex: 1,
+  },
+  dragHandle: {
+    marginRight: 8,
+  },
+  nameCellDragging: {
+    opacity: 0.8,
+    backgroundColor: Colors.white,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   firstNameText: {
     marginBottom: 4,

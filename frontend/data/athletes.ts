@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeDate } from '../utils/date';
 import { Athlete, AttendanceRecord } from './types';
+import { clearAllBoardMessages } from './messages';
 
 const STORAGE_KEY = '@athletes';
 const ATTENDANCE_STORAGE_KEY = '@attendance_records';
@@ -120,7 +121,11 @@ export async function clearAllStorage(): Promise<void> {
       STORAGE_KEY,
       ATTENDANCE_STORAGE_KEY,
       LAST_RESET_DATE_KEY,
+      '@board_messages', // Board messages storage key
     ]);
+    
+    // Clear board messages
+    await clearAllBoardMessages();
     
     // Reset in-memory cache
     athletes = [];
