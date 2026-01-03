@@ -13,9 +13,36 @@ import { addExerciseToWorkout, addWorkout, getAllWorkouts, getWorkoutById, initi
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
 import { formatDate, getDateKey, isToday, normalizeDate, getWorkoutStorageWindow } from '../../utils/date';
 
+// Helper function to format pace names with abbreviations for small devices
+const formatPaceName = (pace: 'recovery' | 'self-selected' | 'steady' | 'threshold', useAbbreviation: boolean = false): string => {
+  if (useAbbreviation) {
+    switch (pace) {
+      case 'recovery': return 'R';
+      case 'self-selected': return 'SS';
+      case 'steady': return 'S';
+      case 'threshold': return 'T';
+      default: return pace;
+    }
+  }
+  // Full names with proper capitalization
+  switch (pace) {
+    case 'recovery': return 'Recovery';
+    case 'self-selected': return 'Self-Selected';
+    case 'steady': return 'Steady';
+    case 'threshold': return 'Threshold';
+    default: return pace;
+  }
+};
+
+// Helper function to format pace for workout names (uses abbreviations for compact display)
+const formatPaceForName = (pace: 'recovery' | 'self-selected' | 'steady' | 'threshold'): string => {
+  return formatPaceName(pace, true); // Always use abbreviations in names
+};
+
 export default function WorkoutScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
+  const isSmallDevice = width < 400; // Use abbreviations on small devices (< 400px width)
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     return normalizeDate(new Date());
@@ -42,6 +69,38 @@ export default function WorkoutScreen() {
   const [exerciseSets, setExerciseSets] = useState<string>('');
   const [exerciseDuration, setExerciseDuration] = useState<string>('');
   const [exerciseDistance, setExerciseDistance] = useState<string>('');
+  const [exerciseRankSpecific, setExerciseRankSpecific] = useState(false);
+  const [exerciseRankData, setExerciseRankData] = useState<{
+    rookies: string;
+    veterans: string;
+    varsity: string;
+  }>({
+    rookies: '',
+    veterans: '',
+    varsity: '',
+  });
+  // Workout exercise editing state (for workout section)
+  const [workoutExerciseModalVisible, setWorkoutExerciseModalVisible] = useState(false);
+  const [editingWorkoutExercise, setEditingWorkoutExercise] = useState<Exercise | null>(null);
+  const [editingWorkoutExerciseWorkoutId, setEditingWorkoutExerciseWorkoutId] = useState<string | null>(null);
+  const [workoutExerciseType, setWorkoutExerciseType] = useState<'time' | 'reps' | null>(null);
+  const [workoutExerciseRank, setWorkoutExerciseRank] = useState<'rookies' | 'veterans' | 'varsity' | null>(null);
+  const [workoutExerciseTotalTime, setWorkoutExerciseTotalTime] = useState<string>('');
+  const [workoutExerciseMultiPace, setWorkoutExerciseMultiPace] = useState<boolean>(false);
+  const [workoutExerciseReps, setWorkoutExerciseReps] = useState<string>('');
+  const [workoutExercisePaceSegments, setWorkoutExercisePaceSegments] = useState<Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }>>([{ time: '', pace: 'recovery' }]);
+  // Title for reps-based workouts
+  const [workoutExerciseTitle, setWorkoutExerciseTitle] = useState<string>('');
+  // Rank-specific workout data (one for each rank)
+  const [rankWorkoutData, setRankWorkoutData] = useState<{
+    rookies: { time: string; reps: string; description: string; paceSegments: Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }>; multiPace: boolean };
+    veterans: { time: string; reps: string; description: string; paceSegments: Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }>; multiPace: boolean };
+    varsity: { time: string; reps: string; description: string; paceSegments: Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }>; multiPace: boolean };
+  }>({
+    rookies: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+    veterans: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+    varsity: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+  });
   // Reorder state
   const [reorderingExerciseId, setReorderingExerciseId] = useState<string | null>(null);
   // Drag and drop state
@@ -194,6 +253,39 @@ export default function WorkoutScreen() {
     const selected = normalizeDate(selectedDate);
     return selected >= today;
   }, [selectedDate]);
+
+  // Get default view mode based on workout type
+  const getDefaultViewMode = (workoutType?: 'workout' | 'longrun' | 'recovery'): 'list' | 'spreadsheet' => {
+    if (workoutType === 'workout') {
+      return 'spreadsheet';
+    }
+    return 'list'; // Default for longrun and recovery
+  };
+
+  // Get effective view mode (workout.viewMode or default based on type)
+  const getEffectiveViewMode = (workout: Workout): 'list' | 'spreadsheet' => {
+    if (workout.viewMode) {
+      return workout.viewMode;
+    }
+    return getDefaultViewMode(workout.workoutType);
+  };
+
+  // Update view mode for a workout
+  const updateViewMode = async (workoutId: string, viewMode: 'list' | 'spreadsheet') => {
+    try {
+      const workout = getWorkoutById(workoutId);
+      if (!workout) return;
+      
+      await updateWorkout(workoutId, {
+        viewMode: viewMode,
+      });
+      
+      setWorkouts(getAllWorkouts());
+    } catch (error: any) {
+      console.error('Error updating view mode:', error);
+      Alert.alert('Error', 'Failed to update view mode');
+    }
+  };
 
   // Toggle edit mode
   const toggleEditMode = () => {
@@ -358,11 +450,27 @@ export default function WorkoutScreen() {
     if (exercise) {
       setEditingExercise(exercise);
       setExerciseName(exercise.name || '');
-      setExerciseNotes(exercise.notes || '');
       setExerciseReps(exercise.reps?.toString() || '');
       setExerciseSets(exercise.sets?.toString() || '');
       setExerciseDuration(exercise.duration ? (exercise.duration / 60).toString() : ''); // Convert seconds to minutes
       setExerciseDistance(exercise.distance?.toString() || '');
+      
+      // Check if notes contain rank-specific data (format: "R: 5 Vet: 6 Var: 7")
+      const notes = exercise.notes || '';
+      const rankSpecificMatch = notes.match(/R:\s*(\d+)\s*Vet:\s*(\d+)\s*Var:\s*(\d+)/i);
+      if (rankSpecificMatch) {
+        setExerciseRankSpecific(true);
+        setExerciseRankData({
+          rookies: rankSpecificMatch[1] || '',
+          veterans: rankSpecificMatch[2] || '',
+          varsity: rankSpecificMatch[3] || '',
+        });
+        setExerciseNotes('');
+      } else {
+        setExerciseRankSpecific(false);
+        setExerciseRankData({ rookies: '', veterans: '', varsity: '' });
+        setExerciseNotes(notes);
+      }
     } else {
       setEditingExercise(null);
       setExerciseName('');
@@ -371,6 +479,8 @@ export default function WorkoutScreen() {
       setExerciseSets('');
       setExerciseDuration('');
       setExerciseDistance('');
+      setExerciseRankSpecific(false);
+      setExerciseRankData({ rookies: '', veterans: '', varsity: '' });
     }
     setExerciseModalVisible(true);
   };
@@ -383,10 +493,28 @@ export default function WorkoutScreen() {
     }
 
     try {
+      // Format notes based on rank-specific toggle
+      let notesValue: string | undefined;
+      if (exerciseRankSpecific) {
+        const rankParts: string[] = [];
+        if (exerciseRankData.rookies.trim()) {
+          rankParts.push(`R: ${exerciseRankData.rookies.trim()}`);
+        }
+        if (exerciseRankData.veterans.trim()) {
+          rankParts.push(`Vet: ${exerciseRankData.veterans.trim()}`);
+        }
+        if (exerciseRankData.varsity.trim()) {
+          rankParts.push(`Var: ${exerciseRankData.varsity.trim()}`);
+        }
+        notesValue = rankParts.length > 0 ? rankParts.join(' ') : undefined;
+      } else {
+        notesValue = exerciseNotes.trim() || undefined;
+      }
+
       const exerciseData: Partial<Exercise> = {
         name: exerciseName.trim(),
         section: editingExerciseSection,
-        notes: exerciseNotes.trim() || undefined,
+        notes: notesValue,
         reps: exerciseReps ? parseInt(exerciseReps, 10) : undefined,
         sets: exerciseSets ? parseInt(exerciseSets, 10) : undefined,
         duration: exerciseDuration ? parseInt(exerciseDuration, 10) * 60 : undefined, // Convert minutes to seconds
@@ -448,9 +576,495 @@ export default function WorkoutScreen() {
       setExerciseSets('');
       setExerciseDuration('');
       setExerciseDistance('');
+      setExerciseRankSpecific(false);
+      setExerciseRankData({ rookies: '', veterans: '', varsity: '' });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to save exercise');
     }
+  };
+
+  // Open workout exercise editor
+  const openWorkoutExerciseEditor = (workoutId: string, exercise?: Exercise) => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Edit', 'You cannot edit exercises from previous dates.');
+      return;
+    }
+    setEditingWorkoutExerciseWorkoutId(workoutId);
+    
+    // Get the workout to check for rank-specific exercises
+    const workout = getWorkoutById(workoutId);
+    const workoutExercises = workout?.exercises.filter(ex => 
+      ex.section === 'workout' && ex.duration
+    ) || [];
+    
+    // Group exercises by rank
+    const exercisesByRank: { [key: string]: Exercise[] } = {};
+    workoutExercises.forEach(ex => {
+      const rank = ex.group || 'none';
+      if (!exercisesByRank[rank]) {
+        exercisesByRank[rank] = [];
+      }
+      exercisesByRank[rank].push(ex);
+    });
+    
+    // Check if we have rank-specific exercises
+    const hasRankSpecific = Object.keys(exercisesByRank).some(rank => 
+      rank !== 'none' && exercisesByRank[rank].length > 0
+    );
+    
+    if (exercise && hasRankSpecific) {
+      // Editing rank-specific workout - load all rank data
+      setEditingWorkoutExercise(exercise);
+      
+      // Determine if it's time-based or reps-based
+      // Check first exercise to see if it has duration (time-based) or just reps (reps-based)
+      const firstRankExercise = Object.values(exercisesByRank).find(rankExs => rankExs.length > 0)?.[0];
+      const isRepsBased = firstRankExercise && !firstRankExercise.duration && firstRankExercise.reps;
+      const workoutType: 'time' | 'reps' = isRepsBased ? 'reps' : 'time';
+      setWorkoutExerciseType(workoutType);
+      
+      // If reps-based, extract title and description from the first exercise
+      if (isRepsBased && firstRankExercise) {
+        // Title is the exercise name (without rank prefix if it exists)
+        const title = firstRankExercise.name || '';
+        // Remove rank prefix if present (e.g., "Rookies: " or "Veterans: ")
+        const cleanTitle = title.replace(/^(Rookies|Veterans|Varsity):\s*/i, '').trim();
+        setWorkoutExerciseTitle(cleanTitle);
+      } else {
+        setWorkoutExerciseTitle('');
+      }
+      
+      // Load data for each rank
+      const ranks: Array<'rookies' | 'veterans' | 'varsity'> = ['rookies', 'veterans', 'varsity'];
+      const newRankData: typeof rankWorkoutData = {
+        rookies: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        veterans: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        varsity: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+      };
+      
+      ranks.forEach(rank => {
+        const rankExercises = exercisesByRank[rank] || [];
+        if (rankExercises.length > 0) {
+          const rankEx = rankExercises[0];
+          
+          if (isRepsBased) {
+            // Reps-based: store reps and description
+            newRankData[rank] = {
+              time: '',
+              reps: rankEx.reps?.toString() || '',
+              description: rankEx.notes || '',
+              paceSegments: [{ time: '', pace: 'recovery' }],
+              multiPace: false,
+            };
+          } else {
+            // Time-based: load time and pace data
+            const totalMinutes = rankEx.duration ? Math.floor(rankEx.duration / 60) : 0;
+            
+            // Check if multi-pace
+            let isMultiPace = false;
+            let paceSegments: Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }> = [];
+            
+            if (rankEx.notes) {
+              try {
+                const parsed = JSON.parse(rankEx.notes);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  isMultiPace = true;
+                  paceSegments = parsed.map((seg: any) => ({
+                    time: seg.time?.toString() || '',
+                    pace: seg.pace || 'recovery'
+                  }));
+                }
+              } catch (e) {
+                // Not JSON, treat as single pace
+              }
+            }
+            
+            if (!isMultiPace) {
+              paceSegments = [{ time: totalMinutes.toString(), pace: rankEx.pace || 'recovery' }];
+            }
+            
+            newRankData[rank] = {
+              time: totalMinutes.toString(),
+              reps: '',
+              paceSegments: paceSegments.length > 0 ? paceSegments : [{ time: '', pace: 'recovery' }],
+              multiPace: isMultiPace,
+            };
+          }
+        }
+      });
+      
+      setRankWorkoutData(newRankData);
+      // Set legacy fields for backward compatibility
+      setWorkoutExerciseRank(exercise.group || null);
+      setWorkoutExerciseTotalTime('');
+      setWorkoutExerciseMultiPace(false);
+      setWorkoutExerciseReps('');
+      setWorkoutExercisePaceSegments([{ time: '', pace: 'recovery' }]);
+    } else if (exercise) {
+      // Editing single exercise (non-rank-specific)
+      setEditingWorkoutExercise(exercise);
+      setWorkoutExerciseType(null);
+      setWorkoutExerciseTitle('');
+      setWorkoutExerciseDescription('');
+      setWorkoutExerciseRank(exercise.group || null);
+      const totalMinutes = exercise.duration ? Math.floor(exercise.duration / 60) : 0;
+      setWorkoutExerciseTotalTime(totalMinutes.toString());
+      
+      // Check if multi-pace
+      let isMultiPace = false;
+      let paceSegments: Array<{ time: string; pace: 'recovery' | 'steady' | 'threshold' }> = [];
+      
+      if (exercise.notes) {
+        try {
+          const parsed = JSON.parse(exercise.notes);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            isMultiPace = true;
+            paceSegments = parsed.map((seg: any) => ({
+              time: seg.time?.toString() || '',
+              pace: seg.pace || 'recovery'
+            }));
+          }
+        } catch (e) {
+          // Not JSON, treat as single pace
+        }
+      }
+      
+      if (!isMultiPace) {
+        paceSegments = [{ time: totalMinutes.toString(), pace: exercise.pace || 'recovery' }];
+      }
+      
+      setWorkoutExerciseMultiPace(isMultiPace);
+      setWorkoutExerciseReps(exercise.reps?.toString() || '');
+      setWorkoutExercisePaceSegments(paceSegments.length > 0 ? paceSegments : [{ time: '', pace: 'recovery' }]);
+      // Reset rank data
+      setRankWorkoutData({
+        rookies: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        veterans: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        varsity: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+      });
+    } else {
+      // Creating new exercise
+      setEditingWorkoutExercise(null);
+      setWorkoutExerciseType(null);
+      setWorkoutExerciseTitle('');
+      setWorkoutExerciseRank(null);
+      setWorkoutExerciseTotalTime('');
+      setWorkoutExerciseMultiPace(false);
+      setWorkoutExerciseReps('');
+      setWorkoutExercisePaceSegments([{ time: '', pace: 'recovery' }]);
+      setRankWorkoutData({
+        rookies: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        veterans: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        varsity: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+      });
+    }
+    setWorkoutExerciseModalVisible(true);
+  };
+
+  // Save workout exercise
+  const saveWorkoutExercise = async () => {
+    if (!editingWorkoutExerciseWorkoutId || !canEditDate) {
+      Alert.alert('Error', 'Cannot save exercise.');
+      return;
+    }
+
+    try {
+      const workout = getWorkoutById(editingWorkoutExerciseWorkoutId);
+      if (!workout) return;
+
+      // If time or reps selected, handle all ranks
+      if (workoutExerciseType) {
+        const ranks: Array<'rookies' | 'veterans' | 'varsity'> = ['rookies', 'veterans', 'varsity'];
+        const ranksWithData: typeof ranks = [];
+        
+        // Validate and collect ranks with data
+        for (const rank of ranks) {
+          const rankData = rankWorkoutData[rank];
+          
+          if (workoutExerciseType === 'reps') {
+            // For reps-based: check if reps are provided
+            if (rankData.reps && parseInt(rankData.reps, 10) > 0) {
+              ranksWithData.push(rank);
+            }
+          } else {
+            // For time-based: check if time is provided
+            const totalTime = rankData.multiPace 
+              ? rankData.paceSegments.reduce((sum, seg) => sum + (parseInt(seg.time, 10) || 0), 0)
+              : parseInt(rankData.time, 10) || 0;
+            
+            if (totalTime > 0) {
+              ranksWithData.push(rank);
+              
+              // Validate multi-pace segments if applicable
+              if (rankData.multiPace) {
+                const totalSegmentTime = rankData.paceSegments.reduce((sum, seg) => {
+                  return sum + (parseInt(seg.time, 10) || 0);
+                }, 0);
+                if (totalSegmentTime !== totalTime) {
+                  Alert.alert('Error', `${rank.charAt(0).toUpperCase() + rank.slice(1)}: Pace segment times must add up to total time (${totalTime} min).`);
+                  return;
+                }
+              }
+            }
+          }
+        }
+        
+        if (ranksWithData.length === 0) {
+          Alert.alert('Error', `Please enter ${workoutExerciseType === 'reps' ? 'reps' : 'time'} for at least one rank.`);
+          return;
+        }
+        
+        // For reps-based, validate title
+        if (workoutExerciseType === 'reps' && !workoutExerciseTitle.trim()) {
+          Alert.alert('Error', 'Please enter a title for the workout.');
+          return;
+        }
+        
+        // Get existing rank-specific exercises to update/delete
+        const existingRankExercises: { [key: string]: Exercise } = {};
+        workout.exercises.forEach(ex => {
+          if (ex.section === 'workout' && ex.group && 
+              (ex.group === 'rookies' || ex.group === 'veterans' || ex.group === 'varsity')) {
+            // Check if it matches the type (time-based has duration, reps-based has reps but no duration)
+            const isTimeBased = !!ex.duration;
+            const isRepsBased = !!ex.reps && !ex.duration;
+            if ((workoutExerciseType === 'time' && isTimeBased) || (workoutExerciseType === 'reps' && isRepsBased)) {
+              existingRankExercises[ex.group] = ex;
+            }
+          }
+        });
+        
+        // Create/update exercises for each rank with data
+        for (const rank of ranksWithData) {
+          const rankData = rankWorkoutData[rank];
+          
+          let exerciseName: string;
+          let notes: string | undefined = undefined;
+          let duration: number | undefined = undefined;
+          let reps: number | undefined = undefined;
+          let pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' | undefined = undefined;
+          
+          if (workoutExerciseType === 'reps') {
+            // Reps-based: use title + rank, store description per rank in notes
+            exerciseName = `${rank.charAt(0).toUpperCase() + rank.slice(1)}: ${workoutExerciseTitle}`;
+            notes = rankData.description || undefined;
+            reps = parseInt(rankData.reps, 10);
+          } else {
+            // Time-based: generate name from time and pace
+            const totalTime = rankData.multiPace 
+              ? rankData.paceSegments.reduce((sum, seg) => sum + (parseInt(seg.time, 10) || 0), 0)
+              : parseInt(rankData.time, 10) || 0;
+            
+            exerciseName = rank.charAt(0).toUpperCase() + rank.slice(1);
+            
+            if (rankData.multiPace && rankData.paceSegments.length > 0) {
+              const validSegments = rankData.paceSegments.filter(seg => seg.time && parseInt(seg.time, 10) > 0);
+              if (validSegments.length > 0) {
+                const paceDesc = validSegments
+                  .map(seg => `${seg.time} ${formatPaceForName(seg.pace)}`)
+                  .join(', ');
+                exerciseName = `${exerciseName}: ${paceDesc}`;
+                notes = JSON.stringify(validSegments);
+              }
+            } else {
+              const paceValue = rankData.paceSegments[0]?.pace || 'recovery';
+              exerciseName = `${exerciseName}: ${totalTime} min`;
+              pace = paceValue;
+            }
+            
+            duration = totalTime * 60; // Convert minutes to seconds
+          }
+          
+          const exerciseData: Partial<Exercise> = {
+            name: exerciseName,
+            section: 'workout',
+            group: rank,
+            pace: pace,
+            duration: duration,
+            reps: reps,
+            notes: notes,
+          };
+          
+          if (existingRankExercises[rank]) {
+            // Update existing exercise
+            await updateExerciseInWorkout(editingWorkoutExerciseWorkoutId, existingRankExercises[rank].id!, exerciseData);
+          } else {
+            // Create new exercise
+            const newExercise: Exercise = {
+              id: `exercise_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              ...exerciseData,
+            } as Exercise;
+            workout.exercises.push(newExercise);
+          }
+        }
+        
+        // Delete exercises for ranks that no longer have data
+        for (const rank of ranks) {
+          if (!ranksWithData.includes(rank) && existingRankExercises[rank]) {
+            await removeExerciseFromWorkout(editingWorkoutExerciseWorkoutId, existingRankExercises[rank].id!);
+          }
+        }
+        
+        await updateWorkout(editingWorkoutExerciseWorkoutId, {
+          exercises: workout.exercises,
+        });
+      } else {
+        // Non-rank-specific: use legacy fields
+        if (!workoutExerciseTotalTime || parseInt(workoutExerciseTotalTime, 10) <= 0) {
+          Alert.alert('Error', 'Please enter a valid total time.');
+          return;
+        }
+
+        if (workoutExerciseMultiPace) {
+          // Validate pace segments
+          const totalSegmentTime = workoutExercisePaceSegments.reduce((sum, seg) => {
+            return sum + (parseInt(seg.time, 10) || 0);
+          }, 0);
+          if (totalSegmentTime !== parseInt(workoutExerciseTotalTime, 10)) {
+            Alert.alert('Error', `Pace segment times must add up to total time (${workoutExerciseTotalTime} min).`);
+            return;
+          }
+        }
+
+        // Generate exercise name based on rank and pace info
+        let exerciseName = workoutExerciseRank ? 
+          workoutExerciseRank.charAt(0).toUpperCase() + workoutExerciseRank.slice(1) : 
+          'Workout';
+        
+        // Store pace segments in notes if multi-pace
+        let notes: string | undefined = undefined;
+        
+        // For multi-pace, create a descriptive name and store segments in notes
+        if (workoutExerciseMultiPace && workoutExercisePaceSegments.length > 0) {
+          const validSegments = workoutExercisePaceSegments.filter(seg => seg.time && parseInt(seg.time, 10) > 0);
+          if (validSegments.length > 0) {
+            const paceDesc = validSegments
+              .map(seg => `${seg.time} ${formatPaceForName(seg.pace)}`)
+              .join(', ');
+            exerciseName = workoutExerciseRank ? 
+              `${workoutExerciseRank.charAt(0).toUpperCase() + workoutExerciseRank.slice(1)}: ${paceDesc}` :
+              paceDesc;
+            // Store segments as JSON in notes for later retrieval
+            notes = JSON.stringify(validSegments);
+          }
+        } else {
+          // Single pace
+          const pace = workoutExercisePaceSegments[0]?.pace || 'recovery';
+          exerciseName = workoutExerciseRank ? 
+            `${workoutExerciseRank.charAt(0).toUpperCase() + workoutExerciseRank.slice(1)}: ${workoutExerciseTotalTime} min` :
+            `${workoutExerciseTotalTime} min`;
+        }
+
+        const exerciseData: Partial<Exercise> = {
+          name: exerciseName,
+          section: 'workout',
+          group: workoutExerciseRank || undefined,
+          pace: workoutExerciseMultiPace ? undefined : (workoutExercisePaceSegments[0]?.pace || 'recovery'),
+          duration: parseInt(workoutExerciseTotalTime, 10) * 60, // Convert minutes to seconds
+          reps: workoutExerciseReps ? parseInt(workoutExerciseReps, 10) : undefined,
+          notes: notes,
+        };
+
+        if (editingWorkoutExercise) {
+          // Update existing exercise
+          await updateExerciseInWorkout(editingWorkoutExerciseWorkoutId, editingWorkoutExercise.id, exerciseData);
+        } else {
+          // Create new exercise
+          const newExercise: Exercise = {
+            id: `exercise_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            ...exerciseData,
+          } as Exercise;
+
+          workout.exercises.push(newExercise);
+          await updateWorkout(editingWorkoutExerciseWorkoutId, {
+            exercises: workout.exercises,
+          });
+        }
+      }
+
+      // Refresh workouts
+      setWorkouts(getAllWorkouts());
+      setWorkoutExerciseModalVisible(false);
+      setEditingWorkoutExercise(null);
+      setEditingWorkoutExerciseWorkoutId(null);
+      setWorkoutExerciseType(null);
+      setWorkoutExerciseTitle('');
+      setWorkoutExerciseDescription('');
+      setWorkoutExerciseRank(null);
+      setWorkoutExerciseTotalTime('');
+      setWorkoutExerciseMultiPace(false);
+      setWorkoutExerciseReps('');
+      setWorkoutExercisePaceSegments([{ time: '', pace: 'recovery' }]);
+      setRankWorkoutData({
+        rookies: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        veterans: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+        varsity: { time: '', reps: '', description: '', paceSegments: [{ time: '', pace: 'recovery' }], multiPace: false },
+      });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save exercise');
+    }
+  };
+
+  // Delete workout exercise
+  const deleteWorkoutExercise = async (workoutId: string, exerciseId: string) => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Delete', 'You cannot delete exercises from previous dates.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Exercise',
+      'Are you sure you want to delete this exercise?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeExerciseFromWorkout(workoutId, exerciseId);
+              setWorkouts(getAllWorkouts());
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete exercise');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Delete all exercises for a rank
+  const deleteRankWorkoutExercises = async (workoutId: string, rankExercises: Exercise[]) => {
+    if (!canEditDate) {
+      Alert.alert('Cannot Delete', 'You cannot delete exercises from previous dates.');
+      return;
+    }
+
+    if (rankExercises.length === 0) return;
+
+    Alert.alert(
+      'Delete Workout',
+      `Are you sure you want to delete this workout for ${rankExercises[0].group ? rankExercises[0].group.charAt(0).toUpperCase() + rankExercises[0].group.slice(1) : 'this rank'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              for (const exercise of rankExercises) {
+                if (exercise.id) {
+                  await removeExerciseFromWorkout(workoutId, exercise.id);
+                }
+              }
+              setWorkouts(getAllWorkouts());
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete exercises');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Delete exercise
@@ -1278,10 +1892,11 @@ export default function WorkoutScreen() {
             { title: 'Post-Workout', exercises: otherPostWorkoutExercises, key: 'postworkout', strides: strideExercises },
           ];
 
-          // Check workout type for displaying appropriate component
-          // Spreadsheet ONLY shows for 'workout' type, LongRun ONLY for 'longrun' type
-          const isSpreadsheet = workout.workoutType === 'workout';
-          const isLongRun = workout.workoutType === 'longrun';
+          // Get effective view mode (with defaults)
+          const effectiveViewMode = getEffectiveViewMode(workout);
+          const isSpreadsheet = effectiveViewMode === 'spreadsheet';
+          const isLongRun = effectiveViewMode === 'list' && workout.workoutType === 'longrun';
+          const isRecovery = workout.workoutType === 'recovery';
 
           return (
             <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet]}>
@@ -1307,6 +1922,64 @@ export default function WorkoutScreen() {
                 )}
               </View>
 
+              {/* View Mode Toggle - Only in edit mode, directly under header */}
+              {isEditMode && isCoachUser && canEditDate && (
+                <View style={[
+                  styles.viewModeToggleContainer,
+                  width >= 768 && styles.viewModeToggleContainerTablet,
+                  width >= 1024 && styles.viewModeToggleContainerLarge
+                ]}>
+                  <Text style={[
+                    baseStyles.text,
+                    styles.viewModeLabel,
+                    width >= 768 && styles.viewModeLabelTablet,
+                    width >= 1024 && styles.viewModeLabelLarge
+                  ]}>
+                    View:
+                  </Text>
+                  <View style={styles.viewModeButtons}>
+                    <TouchableOpacity
+                      onPress={() => updateViewMode(workout.id, 'list')}
+                      style={[
+                        styles.viewModeButton,
+                        width >= 768 && styles.viewModeButtonTablet,
+                        width >= 1024 && styles.viewModeButtonLarge,
+                        effectiveViewMode === 'list' && styles.viewModeButtonActive
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.viewModeButtonText,
+                        width >= 768 && styles.viewModeButtonTextTablet,
+                        width >= 1024 && styles.viewModeButtonTextLarge,
+                        effectiveViewMode === 'list' && styles.viewModeButtonTextActive
+                      ]}>
+                        List
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => updateViewMode(workout.id, 'spreadsheet')}
+                      style={[
+                        styles.viewModeButton,
+                        width >= 768 && styles.viewModeButtonTablet,
+                        width >= 1024 && styles.viewModeButtonLarge,
+                        effectiveViewMode === 'spreadsheet' && styles.viewModeButtonActive
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.viewModeButtonText,
+                        width >= 768 && styles.viewModeButtonTextTablet,
+                        width >= 1024 && styles.viewModeButtonTextLarge,
+                        effectiveViewMode === 'spreadsheet' && styles.viewModeButtonTextActive
+                      ]}>
+                        Spreadsheet
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
               {/* Exercise Sections */}
               {sections.map(section => {
                 const isExpanded = isSectionExpanded(workout.id, section.key);
@@ -1315,16 +1988,19 @@ export default function WorkoutScreen() {
                 // Show section if:
                 // 1. In edit mode (so user can add exercises to empty sections)
                 // 2. OR section has exercises
-                // 3. OR it's workout section with spreadsheet/longrun type
+                // 3. OR it's workout section with spreadsheet/list view (longrun/recovery)
                 const shouldShowSection = isEditMode && isCoachUser && canEditDate
                   ? true // Always show in edit mode
                   : isWorkoutSection 
-                    ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun) || isSpreadsheet || isLongRun
+                    ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun && !isRecovery) || isSpreadsheet || isLongRun || isRecovery
                     : section.exercises.length > 0;
                 
-                // For workout section with spreadsheet/longrun: don't show regular exercises
+                // For workout section: show regular exercises only when:
+                // - Not in spreadsheet view AND
+                // - Not in longrun/recovery list view (they use LongRun component) AND
+                // - Has exercises OR in edit mode (so user can add exercises)
                 const shouldShowRegularExercises = isWorkoutSection 
-                  ? !isSpreadsheet && !isLongRun && section.exercises.length > 0
+                  ? !isSpreadsheet && !isLongRun && !isRecovery && (section.exercises.length > 0 || (isEditMode && isCoachUser && canEditDate))
                   : section.exercises.length > 0;
                 
                 return (
@@ -1350,21 +2026,206 @@ export default function WorkoutScreen() {
                       {isExpanded && (
                         <>
                           <View style={styles.sectionDivider} />
-                          {/* Spreadsheet View ONLY for 'workout' type - inside Workout section */}
-                          {isWorkoutSection && isSpreadsheet && !isLongRun && (
+                          {/* Spreadsheet View - when viewMode is 'spreadsheet' */}
+                          {isWorkoutSection && isSpreadsheet && (
                             <Spreadsheet
                               workoutType={workout.workoutType}
                               isTablet={isTablet}
                               isEditMode={isEditMode}
                             />
                           )}
-                          {/* Long Run View ONLY for 'longrun' type */}
-                          {isWorkoutSection && isLongRun && !isSpreadsheet && (
+                          {/* List View - LongRun component for 'longrun' and 'recovery' types when viewMode is 'list' */}
+                          {isWorkoutSection && !isSpreadsheet && (isLongRun || isRecovery) && (
                             <LongRun 
                               isTablet={isTablet}
                               exercises={workoutExercises}
                             />
                           )}
+                          {/* Workout exercises with add/edit/remove buttons for workout type in list view */}
+                          {isWorkoutSection && !isSpreadsheet && !isLongRun && !isRecovery && (() => {
+                            // Get workout exercises (filter out template exercises)
+                            // Include both time-based (has duration) and reps-based (has reps but no duration)
+                            const workoutExercises = section.exercises.filter(ex => 
+                              ex.section === 'workout' && (ex.duration || (ex.reps && !ex.duration))
+                            );
+                            
+                            // Group exercises by rank
+                            const exercisesByRank: { [key: string]: Exercise[] } = {};
+                            workoutExercises.forEach(ex => {
+                              const rank = ex.group || 'none';
+                              if (!exercisesByRank[rank]) {
+                                exercisesByRank[rank] = [];
+                              }
+                              exercisesByRank[rank].push(ex);
+                            });
+                            
+                            // Check if we have rank-specific exercises
+                            const hasRankSpecific = Object.keys(exercisesByRank).some(rank => 
+                              rank !== 'none' && exercisesByRank[rank].length > 0
+                            );
+                            
+                            const canEditWorkoutExercise = isEditMode && isCoachUser && canEditDate;
+                            
+                            // If rank-specific, show 3 boxes (one for each rank)
+                            if (hasRankSpecific) {
+                              const ranks: Array<'rookies' | 'veterans' | 'varsity'> = ['rookies', 'veterans', 'varsity'];
+                              return (
+                                <>
+                                  {ranks.map((rank) => {
+                                    const rankExercises = exercisesByRank[rank] || [];
+                                    // Only show box if there are exercises for this rank
+                                    if (rankExercises.length === 0) return null;
+                                    
+                                    // Get the first exercise (they should all be the same workout)
+                                    const exercise = rankExercises[0];
+                                    
+                                    // Determine if it's time-based or reps-based
+                                    const isRepsBased = !exercise.duration && exercise.reps;
+                                    
+                                    // Calculate total duration (for time-based) or get reps (for reps-based)
+                                    const totalDuration = isRepsBased 
+                                      ? null 
+                                      : rankExercises.reduce((sum, ex) => 
+                                          sum + (ex.duration ? Math.floor(ex.duration / 60) : 0), 0
+                                        );
+                                    const reps = isRepsBased ? exercise.reps : null;
+                                    
+                                    // Get pace (only for time-based workouts)
+                                    let paceText = '';
+                                    if (!isRepsBased) {
+                                      if (exercise.pace) {
+                                        paceText = formatPaceName(exercise.pace, isSmallDevice);
+                                      } else if (exercise.notes) {
+                                        try {
+                                          const segments = JSON.parse(exercise.notes);
+                                          if (Array.isArray(segments) && segments.length > 0) {
+                                            paceText = segments.map((seg: any) => 
+                                              `${seg.time} ${formatPaceName(seg.pace, isSmallDevice)}`
+                                            ).join(', ');
+                                          }
+                                        } catch (e) {
+                                          // Not JSON, ignore
+                                        }
+                                      }
+                                    }
+                                    
+                                    // For reps-based, extract title from exercise name (remove rank prefix)
+                                    const displayTitle = isRepsBased 
+                                      ? exercise.name.replace(/^(Rookies|Veterans|Varsity):\s*/i, '').trim()
+                                      : null;
+                                    
+                                    return (
+                                      <View key={rank} style={[styles.rankWorkoutBox, isTablet && styles.rankWorkoutBoxTablet]}>
+                                        {canEditWorkoutExercise && (
+                                          <TouchableOpacity
+                                            onPress={() => deleteRankWorkoutExercises(workout.id, rankExercises)}
+                                            style={styles.deleteExerciseButton}
+                                            activeOpacity={0.7}
+                                          >
+                                            <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={Colors.secondary} />
+                                          </TouchableOpacity>
+                                        )}
+                                        <TouchableOpacity
+                                          onPress={canEditWorkoutExercise ? () => openWorkoutExerciseEditor(workout.id, exercise) : undefined}
+                                          style={[styles.rankWorkoutContent, canEditWorkoutExercise && styles.exerciseContentEditable]}
+                                          activeOpacity={canEditWorkoutExercise ? 0.7 : 1}
+                                          disabled={!canEditWorkoutExercise}
+                                        >
+                                          <View style={styles.rankWorkoutHeader}>
+                                            <Text style={[baseStyles.text, styles.rankWorkoutName]}>
+                                              {isRepsBased ? displayTitle : rank.charAt(0).toUpperCase() + rank.slice(1)}
+                                            </Text>
+                                            <Text style={[baseStyles.text, styles.rankWorkoutDuration]}>
+                                              {isRepsBased ? reps : `${totalDuration} min`}
+                                            </Text>
+                                          </View>
+                                          {isRepsBased ? (
+                                            exercise.notes && (
+                                              <Text style={[baseStyles.text, styles.rankWorkoutPace]}>
+                                                {exercise.notes}
+                                              </Text>
+                                            )
+                                          ) : paceText && (
+                                            <Text style={[baseStyles.text, styles.rankWorkoutPace]}>
+                                              {paceText}
+                                            </Text>
+                                          )}
+                                        </TouchableOpacity>
+                                      </View>
+                                    );
+                                  })}
+                                  {/* Add Workout Exercise Button */}
+                                  {isEditMode && isCoachUser && canEditDate && (
+                                    <TouchableOpacity
+                                      onPress={() => openWorkoutExerciseEditor(workout.id)}
+                                      style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                                      <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
+                                        Add Workout
+                                      </Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </>
+                              );
+                            }
+                            
+                            // Non-rank-specific: show exercises as before
+                            return (
+                              <>
+                                {workoutExercises.map((exercise, index) => {
+                                  return (
+                                    <View key={exercise.id || index} style={[styles.exerciseItem, index === workoutExercises.length - 1 && styles.exerciseItemLast]}>
+                                      {canEditWorkoutExercise && (
+                                        <TouchableOpacity
+                                          onPress={() => deleteWorkoutExercise(workout.id, exercise.id!)}
+                                          style={styles.deleteExerciseButton}
+                                          activeOpacity={0.7}
+                                        >
+                                          <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={Colors.secondary} />
+                                        </TouchableOpacity>
+                                      )}
+                                      <TouchableOpacity
+                                        onPress={canEditWorkoutExercise ? () => openWorkoutExerciseEditor(workout.id, exercise) : undefined}
+                                        style={[styles.exerciseContent, canEditWorkoutExercise && styles.exerciseContentEditable]}
+                                        activeOpacity={canEditWorkoutExercise ? 0.7 : 1}
+                                        disabled={!canEditWorkoutExercise}
+                                      >
+                                        <View style={styles.groupedWorkoutHeader}>
+                                          <Text style={[baseStyles.text, styles.groupName]}>
+                                            {exercise.name}
+                                          </Text>
+                                          <Text style={[baseStyles.text, styles.groupDuration]}>
+                                            {exercise.duration ? Math.floor(exercise.duration / 60) : 0} min
+                                          </Text>
+                                        </View>
+                                        {exercise.pace && (
+                                          <Text style={[baseStyles.text, styles.paceType]}>
+                                            {formatPaceName(exercise.pace, isSmallDevice)}
+                                          </Text>
+                                        )}
+                                      </TouchableOpacity>
+                                    </View>
+                                  );
+                                })}
+                                {/* Add Workout Exercise Button */}
+                                {isEditMode && isCoachUser && canEditDate && (
+                                  <TouchableOpacity
+                                    onPress={() => openWorkoutExerciseEditor(workout.id)}
+                                    style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                                    <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
+                                      Add Workout
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
+                              </>
+                            );
+                          })()}
+                          {/* For workout type with list view, regular exercises are shown below */}
                           {/* Strides dropdown for post-workout section */}
                           {section.key === 'postworkout' && section.strides && section.strides.length > 0 && (() => {
                             const stridesKey = `${workout.id}_strides`;
@@ -1405,7 +2266,18 @@ export default function WorkoutScreen() {
                             );
                           })()}
                           {/* Only show regular exercises if NOT spreadsheet or longrun type */}
-                          {shouldShowRegularExercises && section.exercises.map((exercise, index) => {
+                          {shouldShowRegularExercises && (() => {
+                            // Filter out rank-specific workout exercises (they're shown in the rank-specific boxes above)
+                            const exercisesToShow = section.exercises.filter(ex => {
+                              // Exclude rank-specific workout exercises (they have group and either duration or reps)
+                              if (section.key === 'workout' && ex.section === 'workout' && ex.group && 
+                                  (ex.duration || (ex.reps && !ex.duration))) {
+                                return false;
+                              }
+                              return true;
+                            });
+                            
+                            return exercisesToShow.map((exercise, index) => {
                             // Create unique key to avoid duplicate key warnings
                             const uniqueKey = `${exercise.id || 'exercise'}-${index}-${workout.id}`;
                             // Check if this is a grouped workout exercise
@@ -1441,7 +2313,7 @@ export default function WorkoutScreen() {
                                 <Animated.View 
                                   style={[
                                     styles.exerciseItem,
-                                    index === section.exercises.length - 1 && styles.exerciseItemLast,
+                                    index === exercisesToShow.length - 1 && styles.exerciseItemLast,
                                     canEditExercise && styles.exerciseItemEditable,
                                     isDragging && styles.exerciseItemDragging,
                                     isBeingDraggedOver && styles.exerciseItemDragOver,
@@ -1474,11 +2346,11 @@ export default function WorkoutScreen() {
                                         {exercise.name}
                                       </Text>
                                       <Text style={[baseStyles.text, styles.groupDuration]}>
-                                        {exercise.duration} min
+                                        {exercise.duration ? Math.floor(exercise.duration / 60) : 0} min
                                       </Text>
                                     </View>
                                     <Text style={[baseStyles.text, styles.paceType]}>
-                                      {exercise.pace ? exercise.pace.charAt(0).toUpperCase() + exercise.pace.slice(1).replace(/-/g, ' ') : ''}
+                                      {exercise.pace ? formatPaceName(exercise.pace, isSmallDevice) : ''}
                                     </Text>
                                   </>
                                 ) : isGroupedPostWorkout ? (
@@ -1534,27 +2406,75 @@ export default function WorkoutScreen() {
                                         </Text>
                                       )}
                                     </View>
-                                    {exercise.notes && (
-                                      <Text style={[baseStyles.text, styles.exerciseNotes]}>
-                                        {exercise.notes}
-                                      </Text>
-                                    )}
+                                    {(() => {
+                                      // Check if notes contain rank-specific data (format: "R: 5 Vet: 6 Var: 7")
+                                      const rankSpecificMatch = exercise.notes?.match(/R:\s*(\d+)\s*Vet:\s*(\d+)\s*Var:\s*(\d+)/i);
+                                      if (rankSpecificMatch) {
+                                        const rookies = rankSpecificMatch[1];
+                                        const veterans = rankSpecificMatch[2];
+                                        const varsity = rankSpecificMatch[3];
+                                        return (
+                                          <View style={styles.rankSpecificContainer}>
+                                            {rookies && (
+                                              <View style={styles.rankSpecificItem}>
+                                                <Text style={[baseStyles.text, styles.rankSpecificLabel]}>
+                                                  Rookies:
+                                                </Text>
+                                                <Text style={[baseStyles.text, styles.rankSpecificValue]}>
+                                                  {rookies}
+                                                </Text>
+                                              </View>
+                                            )}
+                                            {veterans && (
+                                              <View style={styles.rankSpecificItem}>
+                                                <Text style={[baseStyles.text, styles.rankSpecificLabel]}>
+                                                  Veterans:
+                                                </Text>
+                                                <Text style={[baseStyles.text, styles.rankSpecificValue]}>
+                                                  {veterans}
+                                                </Text>
+                                              </View>
+                                            )}
+                                            {varsity && (
+                                              <View style={styles.rankSpecificItem}>
+                                                <Text style={[baseStyles.text, styles.rankSpecificLabel]}>
+                                                  Varsity:
+                                                </Text>
+                                                <Text style={[baseStyles.text, styles.rankSpecificValue]}>
+                                                  {varsity}
+                                                </Text>
+                                              </View>
+                                            )}
+                                          </View>
+                                        );
+                                      }
+                                      // If exercise has reps but no rank-specific data, show regular notes if they exist
+                                      if (exercise.notes && !exercise.reps) {
+                                        return (
+                                          <Text style={[baseStyles.text, styles.exerciseNotes]}>
+                                            {exercise.notes}
+                                          </Text>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                   </>
                                 )}
                                 </TouchableOpacity>
                               </Animated.View>
                               </View>
                             );
-                          }).concat(
-                            // Show insertion indicator at the end if dragging to the last position
-                            draggingExerciseId && 
-                            draggingSection === section.key && 
-                            draggingWorkoutId === workout.id &&
-                            previewInsertIndex !== null &&
-                            previewInsertIndex === section.exercises.length ? (
-                              <View key="insertion-indicator-end" style={styles.insertionIndicator} />
-                            ) : null
-                          )}
+                            }).concat(
+                              // Show insertion indicator at the end if dragging to the last position
+                              draggingExerciseId && 
+                              draggingSection === section.key && 
+                              draggingWorkoutId === workout.id &&
+                              previewInsertIndex !== null &&
+                              previewInsertIndex === exercisesToShow.length ? (
+                                <View key="insertion-indicator-end" style={styles.insertionIndicator} />
+                              ) : null
+                            );
+                          })()}
                           {/* Add Exercise Button (only for warmup and postworkout in edit mode) */}
                           {isEditMode && isCoachUser && canEditDate && 
                             (section.key === 'warmup' || section.key === 'postworkout') && (
@@ -1578,20 +2498,6 @@ export default function WorkoutScreen() {
             </View>
           );
         })
-      )}
-
-      {/* Add Workout Button (when workouts exist and in edit mode) */}
-      {isEditMode && isCoachUser && canEditDate && selectedDateWorkouts.length > 0 && (
-        <TouchableOpacity
-          onPress={() => openWorkoutTypeSelector()}
-          style={[styles.addWorkoutButton, styles.addWorkoutButtonFloating, isTablet && styles.addWorkoutButtonTablet]}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={isTablet ? 28 : 24} color={Colors.white} />
-          <Text style={[baseStyles.text, styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet]}>
-            Add Workout
-          </Text>
-        </TouchableOpacity>
       )}
 
       {/* Exercise Editor Modal */}
@@ -1630,6 +2536,96 @@ export default function WorkoutScreen() {
                   placeholderTextColor={Colors.neutralMedium}
                 />
               </View>
+
+              {/* Rank Specific Toggle */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Rank Specific?
+                </Text>
+                <View style={styles.toggleContainer}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setExerciseRankSpecific(true);
+                      setExerciseNotes('');
+                    }}
+                    style={[
+                      styles.toggleButton,
+                      exerciseRankSpecific && styles.toggleButtonActive
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.toggleButtonText,
+                      exerciseRankSpecific && styles.toggleButtonTextActive
+                    ]}>
+                      Yes
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setExerciseRankSpecific(false);
+                      setExerciseRankData({ rookies: '', veterans: '', varsity: '' });
+                    }}
+                    style={[
+                      styles.toggleButton,
+                      !exerciseRankSpecific && styles.toggleButtonActive
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.toggleButtonText,
+                      !exerciseRankSpecific && styles.toggleButtonTextActive
+                    ]}>
+                      No
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Rank Specific Inputs */}
+              {exerciseRankSpecific && (
+                <>
+                  <View style={styles.modalInputGroup}>
+                    <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                      R: (Rookies)
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                      value={exerciseRankData.rookies}
+                      onChangeText={(text) => setExerciseRankData(prev => ({ ...prev, rookies: text }))}
+                      placeholder="Enter value"
+                      placeholderTextColor={Colors.neutralMedium}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.modalInputGroup}>
+                    <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                      Vet: (Veterans)
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                      value={exerciseRankData.veterans}
+                      onChangeText={(text) => setExerciseRankData(prev => ({ ...prev, veterans: text }))}
+                      placeholder="Enter value"
+                      placeholderTextColor={Colors.neutralMedium}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.modalInputGroup}>
+                    <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                      Var: (Varsity)
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                      value={exerciseRankData.varsity}
+                      onChangeText={(text) => setExerciseRankData(prev => ({ ...prev, varsity: text }))}
+                      placeholder="Enter value"
+                      placeholderTextColor={Colors.neutralMedium}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </>
+              )}
 
               {/* Exercise Details */}
               <View style={styles.modalInputGroup}>
@@ -1689,20 +2685,22 @@ export default function WorkoutScreen() {
               </View>
 
               {/* Exercise Notes */}
-              <View style={styles.modalInputGroup}>
-                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
-                  Notes (Optional)
-                </Text>
-                <TextInput
-                  style={[styles.modalInput, styles.modalTextArea, isTablet && styles.modalInputTablet]}
-                  value={exerciseNotes}
-                  onChangeText={setExerciseNotes}
-                  placeholder="Enter notes"
-                  placeholderTextColor={Colors.neutralMedium}
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
+              {!exerciseRankSpecific && (
+                <View style={styles.modalInputGroup}>
+                  <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                    Notes (Optional)
+                  </Text>
+                  <TextInput
+                    style={[styles.modalInput, styles.modalTextArea, isTablet && styles.modalInputTablet]}
+                    value={exerciseNotes}
+                    onChangeText={setExerciseNotes}
+                    placeholder="Enter notes"
+                    placeholderTextColor={Colors.neutralMedium}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              )}
 
               {/* Save Button */}
               <TouchableOpacity
@@ -1713,6 +2711,581 @@ export default function WorkoutScreen() {
               >
                 <Text style={[baseStyles.text, styles.modalSaveButtonText, isTablet && styles.modalSaveButtonTextTablet]}>
                   {editingExercise ? 'Update Exercise' : 'Add Exercise'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Workout Exercise Editor Modal */}
+      <Modal
+        visible={workoutExerciseModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setWorkoutExerciseModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                {editingWorkoutExercise ? 'Edit Workout' : 'Add Workout'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setWorkoutExerciseModalVisible(false)}
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScrollView}>
+              {/* Time or Reps Toggle */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Time or Reps?
+                </Text>
+                <View style={styles.toggleContainer}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setWorkoutExerciseType('time');
+                      setWorkoutExerciseTitle('');
+                    }}
+                    style={[
+                      styles.toggleButton,
+                      workoutExerciseType === 'time' && styles.toggleButtonActive
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.toggleButtonText,
+                      workoutExerciseType === 'time' && styles.toggleButtonTextActive
+                    ]}>
+                      Time
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setWorkoutExerciseType('reps');
+                      setWorkoutExerciseTotalTime('');
+                      setWorkoutExerciseMultiPace(false);
+                      setWorkoutExercisePaceSegments([{ time: '', pace: 'recovery' }]);
+                    }}
+                    style={[
+                      styles.toggleButton,
+                      workoutExerciseType === 'reps' && styles.toggleButtonActive
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.toggleButtonText,
+                      workoutExerciseType === 'reps' && styles.toggleButtonTextActive
+                    ]}>
+                      Reps
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Title for Reps-based workouts */}
+              {workoutExerciseType === 'reps' && (
+                <View style={styles.modalInputGroup}>
+                  <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                    Title *
+                  </Text>
+                  <TextInput
+                    style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                    value={workoutExerciseTitle}
+                    onChangeText={setWorkoutExerciseTitle}
+                    placeholder="Enter workout title"
+                    placeholderTextColor={Colors.neutralMedium}
+                  />
+                </View>
+              )}
+
+              {/* Rank-specific inputs (show all 3 ranks) */}
+              {workoutExerciseType ? (
+                <>
+                  {(['rookies', 'veterans', 'varsity'] as const).map((rank) => {
+                    const rankData = rankWorkoutData[rank];
+                    return (
+                      <View key={rank} style={styles.rankInputSection}>
+                        <Text style={[baseStyles.text, styles.rankSectionTitle, isTablet && styles.rankSectionTitleTablet]}>
+                          {rank.charAt(0).toUpperCase() + rank.slice(1)}
+                        </Text>
+                        
+                        {workoutExerciseType === 'reps' ? (
+                          <>
+                            {/* Reps Input */}
+                            <View style={styles.modalInputGroup}>
+                              <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                                Reps *
+                              </Text>
+                              <TextInput
+                                style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                                value={rankData.reps}
+                                onChangeText={(text) => {
+                                  setRankWorkoutData(prev => ({
+                                    ...prev,
+                                    [rank]: { ...prev[rank], reps: text }
+                                  }));
+                                }}
+                                placeholder="Enter number of reps"
+                                placeholderTextColor={Colors.neutralMedium}
+                                keyboardType="numeric"
+                              />
+                            </View>
+                            {/* Description Input */}
+                            <View style={styles.modalInputGroup}>
+                              <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                                Description (Optional)
+                              </Text>
+                              <TextInput
+                                style={[styles.modalInput, styles.modalTextArea, isTablet && styles.modalInputTablet]}
+                                value={rankData.description}
+                                onChangeText={(text) => {
+                                  setRankWorkoutData(prev => ({
+                                    ...prev,
+                                    [rank]: { ...prev[rank], description: text }
+                                  }));
+                                }}
+                                placeholder="Enter description for this rank"
+                                placeholderTextColor={Colors.neutralMedium}
+                                multiline
+                                numberOfLines={3}
+                              />
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            {/* Total Time */}
+                            <View style={styles.modalInputGroup}>
+                              <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                                Total Time (minutes)
+                              </Text>
+                              <TextInput
+                                style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                                value={rankData.time}
+                                onChangeText={(text) => {
+                                  setRankWorkoutData(prev => ({
+                                    ...prev,
+                                    [rank]: { ...prev[rank], time: text }
+                                  }));
+                                }}
+                                placeholder="Enter total time"
+                                placeholderTextColor={Colors.neutralMedium}
+                                keyboardType="numeric"
+                              />
+                            </View>
+
+                        {/* Multi-Pace Toggle */}
+                        <View style={styles.modalInputGroup}>
+                          <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                            Multi-Pace?
+                          </Text>
+                          <View style={styles.toggleContainer}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setRankWorkoutData(prev => ({
+                                  ...prev,
+                                  [rank]: {
+                                    ...prev[rank],
+                                    multiPace: true,
+                                    paceSegments: prev[rank].paceSegments.length === 0 || prev[rank].paceSegments[0].time === '' 
+                                      ? [{ time: '', pace: 'recovery' }]
+                                      : prev[rank].paceSegments
+                                  }
+                                }));
+                              }}
+                              style={[
+                                styles.toggleButton,
+                                rankData.multiPace && styles.toggleButtonActive
+                              ]}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[
+                                styles.toggleButtonText,
+                                rankData.multiPace && styles.toggleButtonTextActive
+                              ]}>
+                                Yes
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setRankWorkoutData(prev => ({
+                                  ...prev,
+                                  [rank]: {
+                                    ...prev[rank],
+                                    multiPace: false,
+                                    paceSegments: prev[rank].time 
+                                      ? [{ time: prev[rank].time, pace: prev[rank].paceSegments[0]?.pace || 'recovery' }]
+                                      : [{ time: '', pace: 'recovery' }]
+                                  }
+                                }));
+                              }}
+                              style={[
+                                styles.toggleButton,
+                                !rankData.multiPace && styles.toggleButtonActive
+                              ]}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[
+                                styles.toggleButtonText,
+                                !rankData.multiPace && styles.toggleButtonTextActive
+                              ]}>
+                                No
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        {/* Pace Segments or Single Pace */}
+                        {rankData.multiPace ? (
+                          <View style={styles.modalInputGroup}>
+                            <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                              Pace Segments
+                            </Text>
+                            {rankData.paceSegments.map((segment, index) => (
+                              <View key={index} style={styles.paceSegmentContainer}>
+                                <View style={styles.paceSegmentRow}>
+                                  <TextInput
+                                    style={[styles.paceSegmentTimeInput, isTablet && styles.paceSegmentTimeInputTablet]}
+                                    value={segment.time}
+                                    onChangeText={(text) => {
+                                      setRankWorkoutData(prev => {
+                                        const newSegments = [...prev[rank].paceSegments];
+                                        newSegments[index].time = text;
+                                        return {
+                                          ...prev,
+                                          [rank]: { ...prev[rank], paceSegments: newSegments }
+                                        };
+                                      });
+                                    }}
+                                    placeholder="Time (min)"
+                                    placeholderTextColor={Colors.neutralMedium}
+                                    keyboardType="numeric"
+                                  />
+                                  {rankData.paceSegments.length > 1 && (
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        setRankWorkoutData(prev => ({
+                                          ...prev,
+                                          [rank]: {
+                                            ...prev[rank],
+                                            paceSegments: prev[rank].paceSegments.filter((_, i) => i !== index)
+                                          }
+                                        }));
+                                      }}
+                                      style={styles.removeSegmentButton}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Ionicons name="close-circle" size={24} color={Colors.error} />
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                                <View style={[styles.paceSegmentPaceContainer, isSmallDevice && styles.paceSegmentPaceContainerSmall]}>
+                                  {(['recovery', 'self-selected', 'steady', 'threshold'] as const).map(pace => (
+                                    <TouchableOpacity
+                                      key={pace}
+                                      onPress={() => {
+                                        setRankWorkoutData(prev => {
+                                          const newSegments = [...prev[rank].paceSegments];
+                                          newSegments[index].pace = pace;
+                                          return {
+                                            ...prev,
+                                            [rank]: { ...prev[rank], paceSegments: newSegments }
+                                          };
+                                        });
+                                      }}
+                                      style={[
+                                        styles.paceSegmentPaceButton,
+                                        segment.pace === pace && styles.paceSegmentPaceButtonActive,
+                                        isTablet && styles.paceSegmentPaceButtonTablet
+                                      ]}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={[
+                                        styles.paceSegmentPaceButtonText,
+                                        segment.pace === pace && styles.paceSegmentPaceButtonTextActive,
+                                        isTablet && styles.paceSegmentPaceButtonTextTablet
+                                      ]} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.8}>
+                                        {formatPaceName(pace, isSmallDevice || width < 500)}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ))}
+                                </View>
+                              </View>
+                            ))}
+                            <TouchableOpacity
+                              onPress={() => {
+                                setRankWorkoutData(prev => ({
+                                  ...prev,
+                                  [rank]: {
+                                    ...prev[rank],
+                                    paceSegments: [...prev[rank].paceSegments, { time: '', pace: 'recovery' }]
+                                  }
+                                }));
+                              }}
+                              style={styles.addSegmentButton}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="add-circle" size={24} color={Colors.primary} />
+                              <Text style={[baseStyles.text, styles.addSegmentButtonText]}>
+                                Add Segment
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View style={styles.modalInputGroup}>
+                            <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                              Pace
+                            </Text>
+                            <View style={styles.paceButtonsContainer}>
+                              {(['recovery', 'self-selected', 'steady', 'threshold'] as const).map(pace => (
+                                <TouchableOpacity
+                                  key={pace}
+                                  onPress={() => {
+                                    setRankWorkoutData(prev => ({
+                                      ...prev,
+                                      [rank]: {
+                                        ...prev[rank],
+                                        paceSegments: [{ time: prev[rank].time, pace: pace }]
+                                      }
+                                    }));
+                                  }}
+                                  style={[
+                                    styles.paceButton,
+                                    rankData.paceSegments[0]?.pace === pace && styles.paceButtonActive,
+                                    isTablet && styles.paceButtonTablet
+                                  ]}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={[
+                                    styles.paceButtonText,
+                                    rankData.paceSegments[0]?.pace === pace && styles.paceButtonTextActive
+                                  ]}>
+                                    {formatPaceName(pace, isSmallDevice || width < 500)}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          </View>
+                        )}
+                          </>
+                        )}
+                      </View>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  {/* Total Time */}
+                  <View style={styles.modalInputGroup}>
+                    <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                      Total Time (minutes) *
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                      value={workoutExerciseTotalTime}
+                      onChangeText={setWorkoutExerciseTotalTime}
+                      placeholder="Enter total time"
+                      placeholderTextColor={Colors.neutralMedium}
+                      keyboardType="numeric"
+                    />
+                  </View>
+
+                  {/* Multi-Pace Toggle */}
+                  <View style={styles.modalInputGroup}>
+                    <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                      Multi-Pace?
+                    </Text>
+                    <View style={styles.toggleContainer}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setWorkoutExerciseMultiPace(true);
+                          if (workoutExercisePaceSegments.length === 0 || workoutExercisePaceSegments[0].time === '') {
+                            setWorkoutExercisePaceSegments([{ time: '', pace: 'recovery' }]);
+                          }
+                        }}
+                        style={[
+                          styles.toggleButton,
+                          workoutExerciseMultiPace && styles.toggleButtonActive
+                        ]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.toggleButtonText,
+                          workoutExerciseMultiPace && styles.toggleButtonTextActive
+                        ]}>
+                          Yes
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setWorkoutExerciseMultiPace(false);
+                          if (workoutExerciseTotalTime) {
+                            setWorkoutExercisePaceSegments([{ time: workoutExerciseTotalTime, pace: workoutExercisePaceSegments[0]?.pace || 'recovery' }]);
+                          } else {
+                            setWorkoutExercisePaceSegments([{ time: '', pace: 'recovery' }]);
+                          }
+                        }}
+                        style={[
+                          styles.toggleButton,
+                          !workoutExerciseMultiPace && styles.toggleButtonActive
+                        ]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.toggleButtonText,
+                          !workoutExerciseMultiPace && styles.toggleButtonTextActive
+                        ]}>
+                          No
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Pace Segments */}
+                  {workoutExerciseMultiPace ? (
+                    <View style={styles.modalInputGroup}>
+                      <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                        Pace Segments *
+                      </Text>
+                      {workoutExercisePaceSegments.map((segment, index) => (
+                        <View key={index} style={styles.paceSegmentContainer}>
+                          <View style={styles.paceSegmentRow}>
+                            <TextInput
+                              style={[styles.paceSegmentTimeInput, isTablet && styles.paceSegmentTimeInputTablet]}
+                              value={segment.time}
+                              onChangeText={(text) => {
+                                const newSegments = [...workoutExercisePaceSegments];
+                                newSegments[index].time = text;
+                                setWorkoutExercisePaceSegments(newSegments);
+                              }}
+                              placeholder="Time (min)"
+                              placeholderTextColor={Colors.neutralMedium}
+                              keyboardType="numeric"
+                            />
+                            {workoutExercisePaceSegments.length > 1 && (
+                              <TouchableOpacity
+                                onPress={() => {
+                                  const newSegments = workoutExercisePaceSegments.filter((_, i) => i !== index);
+                                  setWorkoutExercisePaceSegments(newSegments);
+                                }}
+                                style={styles.removeSegmentButton}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="close-circle" size={24} color={Colors.error} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <View style={[styles.paceSegmentPaceContainer, isSmallDevice && styles.paceSegmentPaceContainerSmall]}>
+                            {(['recovery', 'self-selected', 'steady', 'threshold'] as const).map(pace => (
+                              <TouchableOpacity
+                                key={pace}
+                                onPress={() => {
+                                  const newSegments = [...workoutExercisePaceSegments];
+                                  newSegments[index].pace = pace;
+                                  setWorkoutExercisePaceSegments(newSegments);
+                                }}
+                                style={[
+                                  styles.paceSegmentPaceButton,
+                                  segment.pace === pace && styles.paceSegmentPaceButtonActive,
+                                  isTablet && styles.paceSegmentPaceButtonTablet
+                                ]}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[
+                                  styles.paceSegmentPaceButtonText,
+                                  segment.pace === pace && styles.paceSegmentPaceButtonTextActive,
+                                  isTablet && styles.paceSegmentPaceButtonTextTablet
+                                ]} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.8}>
+                                  {formatPaceName(pace, isSmallDevice || width < 500)}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      ))}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setWorkoutExercisePaceSegments([...workoutExercisePaceSegments, { time: '', pace: 'recovery' }]);
+                        }}
+                        style={styles.addSegmentButton}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="add-circle" size={24} color={Colors.primary} />
+                        <Text style={[baseStyles.text, styles.addSegmentButtonText]}>
+                          Add Segment
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.modalInputGroup}>
+                      <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                        Pace *
+                      </Text>
+                      <View style={styles.paceButtonsContainer}>
+                        {(['recovery', 'self-selected', 'steady', 'threshold'] as const).map(pace => (
+                          <TouchableOpacity
+                            key={pace}
+                            onPress={() => {
+                              const newSegments = [...workoutExercisePaceSegments];
+                              newSegments[0].pace = pace;
+                              setWorkoutExercisePaceSegments(newSegments);
+                            }}
+                            style={[
+                              styles.paceButton,
+                              workoutExercisePaceSegments[0]?.pace === pace && styles.paceButtonActive,
+                              isTablet && styles.paceButtonTablet
+                            ]}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[
+                              styles.paceButtonText,
+                              workoutExercisePaceSegments[0]?.pace === pace && styles.paceButtonTextActive
+                            ]}>
+                              {formatPaceName(pace, isSmallDevice || width < 500)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Reps */}
+                  <View style={styles.modalInputGroup}>
+                    <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                      Reps (Optional)
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                      value={workoutExerciseReps}
+                      onChangeText={setWorkoutExerciseReps}
+                      placeholder="Enter number of reps"
+                      placeholderTextColor={Colors.neutralMedium}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </>
+              )}
+
+              {/* Save Button */}
+              <TouchableOpacity
+                onPress={saveWorkoutExercise}
+                style={[styles.modalSaveButton, isTablet && styles.modalSaveButtonTablet]}
+                activeOpacity={0.7}
+                disabled={
+                  workoutExerciseType === 'reps'
+                    ? !workoutExerciseTitle.trim() || (!rankWorkoutData.rookies.reps && !rankWorkoutData.veterans.reps && !rankWorkoutData.varsity.reps)
+                    : workoutExerciseType === 'time'
+                      ? !rankWorkoutData.rookies.time && !rankWorkoutData.veterans.time && !rankWorkoutData.varsity.time
+                      : !workoutExerciseTotalTime
+                }
+              >
+                <Text style={[baseStyles.text, styles.modalSaveButtonText, isTablet && styles.modalSaveButtonTextTablet]}>
+                  {editingWorkoutExercise ? 'Update Workout' : 'Add Workout'}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -2269,6 +3842,42 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
   },
+  rankSpecificContainer: {
+    marginTop: 12,
+    paddingLeft: 4,
+  },
+  rankSpecificItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.white,
+    borderRadius: 10,
+    marginBottom: 8,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+  },
+  rankSpecificLabel: {
+    fontSize: 17,
+    color: Colors.text,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  rankSpecificValue: {
+    fontSize: 18,
+    color: Colors.secondary,
+    fontWeight: '700',
+    backgroundColor: Colors.neutralBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2292,6 +3901,98 @@ const styles = StyleSheet.create({
   editWorkoutButtonTablet: {
     padding: 12,
     borderRadius: 12,
+  },
+  viewModeToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 0,
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.neutralBackground,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.neutralMedium,
+  },
+  viewModeToggleContainerTablet: {
+    marginTop: 0,
+    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+  },
+  viewModeToggleContainerLarge: {
+    marginTop: 0,
+    marginBottom: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+  },
+  viewModeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text,
+    marginRight: 10,
+    minWidth: 40,
+  },
+  viewModeLabelTablet: {
+    fontSize: 15,
+    marginRight: 12,
+    minWidth: 45,
+  },
+  viewModeLabelLarge: {
+    fontSize: 16,
+    marginRight: 14,
+    minWidth: 50,
+  },
+  viewModeButtons: {
+    flexDirection: 'row',
+    gap: 6,
+    flex: 1,
+  },
+  viewModeButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: Colors.neutralMedium,
+    minWidth: 80,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewModeButtonTablet: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    minWidth: 100,
+    minHeight: 44,
+  },
+  viewModeButtonLarge: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    minWidth: 120,
+    minHeight: 48,
+  },
+  viewModeButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  viewModeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  viewModeButtonTextTablet: {
+    fontSize: 15,
+  },
+  viewModeButtonTextLarge: {
+    fontSize: 16,
+  },
+  viewModeButtonTextActive: {
+    color: Colors.white,
   },
   addWorkoutButton: {
     flexDirection: 'row',
@@ -2602,6 +4303,272 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     opacity: 0.6,
     marginHorizontal: 12,
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  toggleButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  toggleButtonTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  rankButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  rankButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankButtonTablet: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    minWidth: 120,
+  },
+  rankButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  rankButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  rankButtonTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  paceButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  paceButton: {
+    flex: 1,
+    minWidth: 70,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paceButtonTablet: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    minWidth: 120,
+  },
+  paceButtonActive: {
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  paceButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  paceButtonTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  paceSegmentContainer: {
+    marginBottom: 16,
+  },
+  paceSegmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  paceSegmentTimeInput: {
+    flex: 1,
+    minWidth: 100,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.text,
+    backgroundColor: Colors.white,
+  },
+  paceSegmentTimeInputTablet: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    fontSize: 18,
+    borderRadius: 14,
+    minWidth: 120,
+  },
+  paceSegmentPaceContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    width: '100%',
+  },
+  paceSegmentPaceContainerSmall: {
+    gap: 4,
+  },
+  paceSegmentPaceButton: {
+    flex: 1,
+    minWidth: 70,
+    maxWidth: 120,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paceSegmentPaceButtonTablet: {
+    minWidth: 90,
+    maxWidth: 140,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  paceSegmentPaceButtonActive: {
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  paceSegmentPaceButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  paceSegmentPaceButtonTextTablet: {
+    fontSize: 15,
+  },
+  paceSegmentPaceButtonTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  removeSegmentButton: {
+    padding: 4,
+  },
+  addSegmentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    borderStyle: 'dashed',
+    marginTop: 8,
+  },
+  addSegmentButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  rankWorkoutBox: {
+    marginBottom: 16,
+    position: 'relative',
+  },
+  rankWorkoutBoxTablet: {
+    marginBottom: 20,
+  },
+  rankWorkoutContent: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 16,
+    paddingLeft: 20,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
+    borderWidth: 0,
+  },
+  rankWorkoutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  rankWorkoutName: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: Colors.text,
+    letterSpacing: -0.2,
+    flex: 1,
+  },
+  rankWorkoutDuration: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+    backgroundColor: Colors.white,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+  },
+  rankWorkoutPace: {
+    fontSize: 15,
+    color: Colors.secondary,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  rankInputSection: {
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: Colors.neutralBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutralMedium,
+  },
+  rankSectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginBottom: 16,
+    letterSpacing: -0.2,
+  },
+  rankSectionTitleTablet: {
+    fontSize: 22,
+    marginBottom: 20,
   },
 });
 

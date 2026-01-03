@@ -7,6 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeDate } from '../utils/date';
 import { Athlete, AttendanceRecord } from './types';
 import { clearAllBoardMessages } from './messages';
+import { resetWorkouts } from './workouts';
+import { initializeUserRole, setUserRole } from './user';
 
 const STORAGE_KEY = '@athletes';
 const ATTENDANCE_STORAGE_KEY = '@attendance_records';
@@ -122,12 +124,14 @@ export async function clearAllStorage(): Promise<void> {
       ATTENDANCE_STORAGE_KEY,
       LAST_RESET_DATE_KEY,
       '@board_messages', // Board messages storage key
+      '@workouts', // Workouts storage key
+      '@user_role', // User role storage key
     ]);
     
     // Clear board messages
     await clearAllBoardMessages();
     
-    // Reset in-memory cache
+    // Reset in-memory cache for athletes
     athletes = [];
     attendanceRecords = [];
     isLoaded = false;
@@ -145,6 +149,12 @@ export async function clearAllStorage(): Promise<void> {
     
     // Reinitialize attendance
     await initializeAttendanceRecords();
+    
+    // Reset workouts to defaults
+    await resetWorkouts();
+    
+    // Reset user role to default 'coach'
+    await setUserRole('coach');
     
     console.log('Storage cleared and reset to defaults');
     if (process.env.NODE_ENV === 'development') {

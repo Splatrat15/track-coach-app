@@ -20,6 +20,7 @@ export interface Workout {
   description?: string;
   date: Date;
   workoutType?: 'workout' | 'longrun' | 'recovery'; // Determines which Dynamics template to use
+  viewMode?: 'list' | 'spreadsheet'; // Determines which view to show for workout section
   exercises: Exercise[]; // Dynamic exercises
   templateSections?: string[]; // References to template section IDs (e.g., ['cooldown'])
   athleteIds: string[];

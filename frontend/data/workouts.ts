@@ -244,6 +244,16 @@ export async function initializeWorkouts(): Promise<void> {
 }
 
 /**
+ * Reset workouts to defaults (for use with clearAllStorage)
+ * This resets the in-memory state and forces reinitialization
+ */
+export async function resetWorkouts(): Promise<void> {
+  workouts = [];
+  isLoaded = false;
+  await initializeWorkouts();
+}
+
+/**
  * Get all workouts within the 3-week window (last week Monday to next week Sunday)
  */
 export function getAllWorkouts(): Workout[] {
