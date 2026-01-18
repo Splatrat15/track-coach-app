@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
 import { getAllAthletes, getEffectiveRank, initializeAthletes } from '../../data/athletes';
 import { Athlete } from '../../data/types';
@@ -121,6 +121,23 @@ interface WorkoutSegment {
 }
 
 /**
+ * Extended column definition for editable columns
+ */
+interface WorkoutColumn {
+  distance?: number; // in meters (optional)
+  percentage?: number; // percentage of goal pace (e.g., 0.8 for 80%) (optional)
+  reps?: number; // number of reps (optional)
+  time?: number; // time in seconds (optional)
+  recordTime?: boolean; // whether to record time for this column
+  name?: string; // custom name for the column (optional)
+  label: string; // display label
+  isCustom?: boolean; // whether this is a custom/editable column
+  id?: string; // unique ID for custom columns
+  repNumber?: number; // which rep number this is (for multi-rep columns with recordTime)
+  isMultiRepNoTime?: boolean; // if true, this is a multi-rep column where reps/percentage shown in data area
+}
+
+/**
  * Workout configuration for a rank
  */
 interface RankWorkoutConfig {
@@ -175,12 +192,12 @@ function getWorkoutConfig(rank: 'rookie' | 'veteran' | 'varsity'): RankWorkoutCo
 /**
  * Generate all columns for a workout (including strides and all repeats)
  */
-function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Array<{ distance: number; percentage: number; label: string }> {
+function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): WorkoutColumn[] {
   const config = getWorkoutConfig(rank);
-  const columns: Array<{ distance: number; percentage: number; label: string }> = [];
+  const columns: WorkoutColumn[] = [];
   
   // All workouts start with 4 strides
-  columns.push({ distance: 0, percentage: 0, label: 'Strides' });
+  columns.push({ distance: 0, percentage: 0, label: 'Strides', isCustom: false });
   
   // Add all repeats of segments
   for (let repeat = 0; repeat < config.repeats; repeat++) {
@@ -188,7 +205,8 @@ function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Array<{
       columns.push({
         distance: segment.distance,
         percentage: segment.percentage,
-        label: `${segment.distance}m`
+        label: `${segment.distance}m`,
+        isCustom: false
       });
     });
   }
@@ -204,6 +222,18 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
   const [timeDifferences, setTimeDifferences] = useState<Record<string, number | null>>({});
   // Track which dropdown is currently open: key format is "rowIndex-columnIndex"
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  // Custom columns added by the user (editable columns)
+  const [customColumns, setCustomColumns] = useState<WorkoutColumn[]>([]);
+  // Modal state for adding/editing columns
+  const [addColumnModalVisible, setAddColumnModalVisible] = useState(false);
+  const [editingColumnIndex, setEditingColumnIndex] = useState<number | null>(null);
+  // Form state for new column
+  const [newColumnReps, setNewColumnReps] = useState<string>('');
+  const [newColumnTime, setNewColumnTime] = useState<string>('');
+  const [newColumnPercentage, setNewColumnPercentage] = useState<string>('');
+  const [newColumnRecordTime, setNewColumnRecordTime] = useState<boolean>(false);
+  const [newColumnName, setNewColumnName] = useState<string>('');
+  const [newColumnDistance, setNewColumnDistance] = useState<string>('');
   
   // Drag and drop state
   const [draggingAthleteId, setDraggingAthleteId] = useState<string | null>(null);
@@ -354,11 +384,209 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
     });
   }, []); // Empty deps - use refs for state
 
-  // Generate workout columns based on selected rank
+  // Use only custom columns (no default/fixed columns)
   const workoutColumns = useMemo(() => {
-    if (!selectedRank) return [];
-    return generateWorkoutColumns(selectedRank);
-  }, [selectedRank]);
+    return customColumns;
+  }, [customColumns]);
+
+  // Generate label for a column based on its properties
+  const generateColumnLabel = useCallback((column: Partial<WorkoutColumn>): string => {
+    if (column.name) {
+      return column.name;
+    }
+    if (column.distance) {
+      return `${column.distance}m`;
+    }
+    if (column.reps !== undefined) {
+      return `${column.reps} reps`;
+    }
+    if (column.time !== undefined) {
+      const minutes = Math.floor(column.time / 60);
+      const seconds = column.time % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+    return 'Column';
+  }, []);
+
+  // Reset form when modal closes
+  const resetColumnForm = () => {
+    setNewColumnReps('');
+    setNewColumnTime('');
+    setNewColumnPercentage('');
+    setNewColumnRecordTime(false);
+    setNewColumnName('');
+    setNewColumnDistance('');
+    setEditingColumnIndex(null);
+  };
+
+  // Handle adding a new column
+  const handleAddColumn = () => {
+    // Validation: if no name and no distance, require name
+    if (!newColumnName.trim() && !newColumnDistance.trim()) {
+      Alert.alert('Validation Error', 'Please provide either a name or distance for the column.');
+      return;
+    }
+
+    const baseColumnData: Partial<WorkoutColumn> = {
+      name: newColumnName.trim() || undefined,
+      distance: newColumnDistance.trim() ? parseInt(newColumnDistance, 10) : undefined,
+      reps: newColumnReps.trim() ? parseInt(newColumnReps, 10) : undefined,
+      time: newColumnTime.trim() ? parseInt(newColumnTime, 10) : undefined,
+      percentage: newColumnPercentage.trim() ? parseFloat(newColumnPercentage) / 100 : undefined,
+      recordTime: newColumnRecordTime,
+    };
+
+    const repsValue = newColumnReps.trim() ? parseInt(newColumnReps, 10) : undefined;
+    const hasMultipleReps = repsValue !== undefined && repsValue > 1;
+
+    if (editingColumnIndex !== null) {
+      // Editing existing column - replace it (or all reps if it was multi-rep)
+      const existingColumn = customColumns[editingColumnIndex];
+      const isEditingMultiRep = existingColumn.repNumber !== undefined;
+      
+      // If editing a multi-rep column, remove all related reps
+      let columnsToKeep = customColumns;
+      if (isEditingMultiRep) {
+        const baseId = existingColumn.id?.replace(/_\d+$/, '') || existingColumn.id;
+        columnsToKeep = customColumns.filter(col => {
+          const colBaseId = col.id?.replace(/_\d+$/, '') || col.id;
+          return colBaseId !== baseId;
+        });
+      } else {
+        // Remove just this column
+        columnsToKeep = customColumns.filter((_, idx) => idx !== editingColumnIndex);
+      }
+
+      // Create new columns based on settings
+      const newColumns: WorkoutColumn[] = [];
+      
+      if (hasMultipleReps && newColumnRecordTime) {
+        // Create multiple columns (one per rep)
+        for (let rep = 1; rep <= repsValue; rep++) {
+          const repColumn: WorkoutColumn = {
+            ...baseColumnData,
+            label: baseColumnData.name || baseColumnData.distance ? 
+              (baseColumnData.name || `${baseColumnData.distance}m`) :
+              `Rep ${rep}`,
+            repNumber: rep,
+            isCustom: true,
+            id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${rep}`,
+          };
+          newColumns.push(repColumn);
+        }
+      } else {
+        // Single column
+        const singleColumn: WorkoutColumn = {
+          ...baseColumnData,
+          label: generateColumnLabel(baseColumnData),
+          isMultiRepNoTime: hasMultipleReps && !newColumnRecordTime,
+          isCustom: true,
+          id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        };
+        newColumns.push(singleColumn);
+      }
+
+      setCustomColumns([...columnsToKeep, ...newColumns]);
+    } else {
+      // Adding new column
+      const newColumns: WorkoutColumn[] = [];
+      
+      if (hasMultipleReps && newColumnRecordTime) {
+        // Create multiple columns (one per rep)
+        for (let rep = 1; rep <= repsValue; rep++) {
+          const repColumn: WorkoutColumn = {
+            ...baseColumnData,
+            label: baseColumnData.name || baseColumnData.distance ? 
+              (baseColumnData.name || `${baseColumnData.distance}m`) :
+              `Rep ${rep}`,
+            repNumber: rep,
+            isCustom: true,
+            id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${rep}`,
+          };
+          newColumns.push(repColumn);
+        }
+      } else {
+        // Single column
+        const singleColumn: WorkoutColumn = {
+          ...baseColumnData,
+          label: generateColumnLabel(baseColumnData),
+          isMultiRepNoTime: hasMultipleReps && !newColumnRecordTime,
+          isCustom: true,
+          id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        };
+        newColumns.push(singleColumn);
+      }
+
+      setCustomColumns([...customColumns, ...newColumns]);
+    }
+
+    setAddColumnModalVisible(false);
+    resetColumnForm();
+  };
+
+  // Handle deleting a custom column (and all related reps if it's a multi-rep column)
+  const handleDeleteColumn = (columnId: string) => {
+    const column = customColumns.find(c => c.id === columnId);
+    if (!column) return;
+
+    Alert.alert(
+      'Delete Column',
+      column.repNumber !== undefined 
+        ? 'Are you sure you want to delete all reps for this column?'
+        : 'Are you sure you want to delete this column?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            if (column.repNumber !== undefined) {
+              // Delete all reps (find base ID)
+              const baseId = columnId.replace(/_\d+$/, '');
+              setCustomColumns(customColumns.filter(col => {
+                const colId = col.id?.replace(/_\d+$/, '') || col.id;
+                return colId !== baseId;
+              }));
+            } else {
+              // Delete single column
+              setCustomColumns(customColumns.filter(col => col.id !== columnId));
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Handle editing a custom column
+  const handleEditColumn = (column: WorkoutColumn, index: number) => {
+    // If editing a multi-rep column with repNumber, find the base column (first rep)
+    let baseColumn = column;
+    let actualIndex = index;
+    if (column.repNumber !== undefined && column.repNumber > 1) {
+      const baseId = column.id?.replace(/_\d+$/, '');
+      const firstRep = customColumns.find(col => {
+        const colId = col.id?.replace(/_\d+$/, '');
+        return colId === baseId && col.repNumber === 1;
+      });
+      if (firstRep) {
+        baseColumn = firstRep;
+        // Find the index of the first rep for editing
+        const firstRepIndex = customColumns.findIndex(col => col.id === firstRep.id);
+        if (firstRepIndex !== -1) {
+          actualIndex = firstRepIndex;
+        }
+      }
+    }
+
+    setNewColumnReps(baseColumn.reps?.toString() || '');
+    setNewColumnTime(baseColumn.time?.toString() || '');
+    setNewColumnPercentage(baseColumn.percentage ? (baseColumn.percentage * 100).toString() : '');
+    setNewColumnRecordTime(baseColumn.recordTime || false);
+    setNewColumnName(baseColumn.name || '');
+    setNewColumnDistance(baseColumn.distance?.toString() || '');
+    setEditingColumnIndex(actualIndex);
+    setAddColumnModalVisible(true);
+  };
 
   const [filteredAthletesOrder, setFilteredAthletesOrder] = useState<Athlete[]>([]);
   
@@ -610,25 +838,70 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
             style={styles.scrollableTable}
           >
             <View>
-              {/* Only show headers if rank is selected and columns are generated */}
-              {workoutColumns.length > 0 && (
+              {/* Show headers if columns exist or in edit mode */}
+              {(workoutColumns.length > 0 || isEditMode) && (
                 <>
                   {/* Header Row 1: Distances */}
                   <View style={[styles.tableHeaderRow, isTablet && styles.tableHeaderRowTablet]}>
                     {workoutColumns.map((column, colIndex) => (
-                      <View 
+                      <TouchableOpacity
                         key={`header-distance-${colIndex}`}
                         style={[
                           styles.headerCell, 
                           styles.dataHeaderCell,
-                          colIndex === workoutColumns.length - 1 && styles.lastHeaderCell
+                          colIndex === workoutColumns.length - 1 && styles.lastHeaderCell,
+                          isEditMode && styles.headerCellEditable
                         ]}
+                        onPress={() => {
+                          if (isEditMode) {
+                            // Find the index in customColumns array
+                            const customIndex = customColumns.findIndex(c => c.id === column.id);
+                            if (customIndex !== -1) {
+                              Alert.alert(
+                                'Column Options',
+                                `What would you like to do with "${column.name || column.label || 'this column'}"?`,
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: 'Edit',
+                                    onPress: () => handleEditColumn(column, customIndex),
+                                  },
+                                  {
+                                    text: 'Delete',
+                                    style: 'destructive',
+                                    onPress: () => column.id && handleDeleteColumn(column.id),
+                                  },
+                                ]
+                              );
+                            }
+                          }
+                        }}
+                        activeOpacity={isEditMode ? 0.7 : 1}
+                        disabled={!isEditMode}
                       >
-                        <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>
-                          {column.label}
-                        </Text>
-                      </View>
+                        <View style={styles.headerCellContent}>
+                          <Text style={[styles.headerText, isTablet && styles.headerTextTablet]}>
+                            {column.name || column.label || (column.distance ? `${column.distance}m` : 'Column')}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
                     ))}
+                    {/* Add Column Button in Edit Mode */}
+                    {isEditMode && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          resetColumnForm();
+                          setAddColumnModalVisible(true);
+                        }}
+                        style={[styles.addColumnButton, isTablet && styles.addColumnButtonTablet]}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.white} />
+                        <Text style={[styles.addColumnButtonText, isTablet && styles.addColumnButtonTextTablet]}>
+                          Add
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   
                   {/* Header Row 2: Percentages */}
@@ -643,10 +916,25 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                         ]}
                       >
                         <Text style={[styles.headerText, styles.percentageText, isTablet && styles.headerTextTablet]}>
-                          {column.distance === 0 ? '4' : `${Math.round(column.percentage * 100)}%`}
+                          {column.distance === 0 
+                            ? '4' 
+                            : column.percentage !== undefined 
+                              ? `${Math.round(column.percentage * 100)}%`
+                              : column.isMultiRepNoTime
+                                ? '' // For multi-rep no-time columns, info shown in data area
+                                : column.repNumber !== undefined
+                                  ? `${Math.round((column.percentage || 0) * 100)}%`
+                                  : column.time !== undefined
+                                    ? `${Math.floor(column.time / 60)}:${(column.time % 60).toString().padStart(2, '0')}`
+                                    : '--'
+                          }
                         </Text>
                       </View>
                     ))}
+                    {/* Spacer for Add Column button */}
+                    {isEditMode && (
+                      <View style={[styles.headerCell, styles.dataHeaderCell]} />
+                    )}
                   </View>
                 </>
               )}
@@ -719,6 +1007,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                       ]} />
                       {/* Dynamic columns based on workoutColumns */}
                       {workoutColumns.map((column, colIndex) => {
+                        // Skip rendering edit/delete in data cells - those are only in header
                         const isLastColumn = colIndex === workoutColumns.length - 1;
                         const isStrides = column.distance === 0;
                         
@@ -736,25 +1025,49 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                               // Strides column - intentionally blank
                               null
                             ) : !isBlank ? (
-                              // Time row - show calculated time
+                              // Time row - show calculated time or custom column content
                               <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                                {column.distance > 400 
-                                  ? formatTimeDisplay(goal1600m, column.distance, column.percentage)
-                                  : calculateTime(goal1600m, column.distance, column.percentage)
+                                {column.distance && column.percentage !== undefined
+                                  ? (column.distance > 400 
+                                      ? formatTimeDisplay(goal1600m, column.distance, column.percentage)
+                                      : calculateTime(goal1600m, column.distance, column.percentage))
+                                  : column.isMultiRepNoTime
+                                    ? '' // Multi-rep no-time: info shown in blank row below
+                                    : column.percentage !== undefined
+                                      ? '--' // Has percentage but no distance - calculated time not applicable
+                                      : column.recordTime 
+                                        ? '--' // Placeholder for custom time columns
+                                        : '' // No percentage and no recordTime - leave blank (reps shown in header only)
                                 }
                               </Text>
                             ) : (
-                              // Blank row - show dropdown
-                              <TouchableOpacity
-                                style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
-                                onPress={() => setOpenDropdown(getInputKey(colIndex))}
-                                activeOpacity={0.7}
-                              >
-                                <Text style={[styles.dropdownButtonText, isTablet && styles.dropdownButtonTextTablet]}>
-                                  {formatTimeDifference(getTimeDifferenceValue(colIndex))}
+                              // Blank row
+                              column.isMultiRepNoTime ? (
+                                // Multi-rep column without time recording - show reps and percentage
+                                <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
+                                  {column.reps !== undefined && column.reps > 0 
+                                    ? `${column.reps} rep${column.reps > 1 ? 's' : ''}${column.percentage !== undefined ? `, ${Math.round(column.percentage * 100)}%` : ''}`
+                                    : '--'
+                                  }
                                 </Text>
-                                <Ionicons name="chevron-down" size={isTablet ? 16 : 14} color={Colors.text} />
-                              </TouchableOpacity>
+                              ) : column.recordTime ? (
+                                // Show dropdown if recordTime is true
+                                <TouchableOpacity
+                                  style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
+                                  onPress={() => setOpenDropdown(getInputKey(colIndex))}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={[styles.dropdownButtonText, isTablet && styles.dropdownButtonTextTablet]}>
+                                    {formatTimeDifference(getTimeDifferenceValue(colIndex))}
+                                  </Text>
+                                  <Ionicons name="chevron-down" size={isTablet ? 16 : 14} color={Colors.text} />
+                                </TouchableOpacity>
+                              ) : (
+                                // No percentage and no recordTime - leave blank (reps shown in header only)
+                                <Text style={[baseStyles.text, styles.tableCell, isTablet && styles.tableCellTablet]}>
+                                  {''}
+                                </Text>
+                              )
                             )}
                           </View>
                         );
@@ -791,14 +1104,26 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                         </View>
                       );
                     })}
+                    {/* Empty cell for Add Column button in edit mode */}
+                    {isEditMode && (
+                      <View 
+                        style={[
+                          styles.dataCell, 
+                          isTablet && styles.dataCellTablet,
+                          styles.lastDataCell
+                        ]}
+                      >
+                        <View style={styles.columnDivider} />
+                      </View>
+                    )}
                   </View>
                 );
               })()}
             </View>
           </ScrollView>
           </View>
+          </View>
         </View>
-      </View>
       )}
       
       {/* Time Difference Dropdown Modal */}
@@ -867,6 +1192,174 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
               })}
             </ScrollView>
           </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Add/Edit Column Modal */}
+      <Modal
+        visible={addColumnModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setAddColumnModalVisible(false);
+          resetColumnForm();
+        }}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setAddColumnModalVisible(false);
+            resetColumnForm();
+          }}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={[styles.modalContent, isTablet && styles.modalContentTablet]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.text, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                {editingColumnIndex !== null ? 'Edit Column' : 'Add Column'}
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                onPress={() => {
+                  setAddColumnModalVisible(false);
+                  resetColumnForm();
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 24 : 20} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.modalScrollView} 
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Name Input */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Name (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={newColumnName}
+                  onChangeText={setNewColumnName}
+                  placeholder="Enter column name"
+                  placeholderTextColor={Colors.neutralMedium}
+                />
+              </View>
+
+              {/* Distance Input */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Distance (meters) (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={newColumnDistance}
+                  onChangeText={setNewColumnDistance}
+                  placeholder="Enter distance in meters"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Reps Input */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Reps (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={newColumnReps}
+                  onChangeText={setNewColumnReps}
+                  placeholder="Enter number of reps"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Percentage Input */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Percentage (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={newColumnPercentage}
+                  onChangeText={setNewColumnPercentage}
+                  placeholder="Enter percentage (e.g., 80 for 80%)"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Time Input */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Time (seconds) (Optional)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={newColumnTime}
+                  onChangeText={setNewColumnTime}
+                  placeholder="Enter time in seconds"
+                  placeholderTextColor={Colors.neutralMedium}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Record Time Toggle */}
+              <View style={styles.modalInputGroup}>
+                <TouchableOpacity
+                  style={styles.checkboxContainer}
+                  onPress={() => setNewColumnRecordTime(!newColumnRecordTime)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.checkbox, newColumnRecordTime && styles.checkboxChecked]}>
+                    {newColumnRecordTime && (
+                      <Ionicons name="checkmark" size={isTablet ? 20 : 18} color={Colors.white} />
+                    )}
+                  </View>
+                  <Text style={[baseStyles.text, styles.checkboxLabel, isTablet && styles.checkboxLabelTablet]}>
+                    Record Time?
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet]}>
+                Note: Either name or distance must be provided.
+              </Text>
+
+              {/* Action Buttons */}
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => {
+                    setAddColumnModalVisible(false);
+                    resetColumnForm();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[baseStyles.text, styles.modalButtonText]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonSave]}
+                  onPress={handleAddColumn}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[baseStyles.text, styles.modalButtonText, styles.modalButtonTextSave]}>
+                    {editingColumnIndex !== null ? 'Save' : 'Add'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </View>
@@ -1397,6 +1890,144 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   emptyStateTextTablet: {
+    fontSize: 18,
+  },
+  headerCellContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    position: 'relative',
+  },
+  addColumnButton: {
+    width: 90,
+    minWidth: 90,
+    height: 44,
+    backgroundColor: Colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 2,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 8,
+    shadowColor: Colors.secondary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  addColumnButtonTablet: {
+    width: 100,
+    minWidth: 100,
+    height: 44,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  addColumnButtonText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  addColumnButtonTextTablet: {
+    fontSize: 16,
+  },
+  headerCellEditable: {
+    opacity: 1,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: Colors.neutralMedium,
+    borderRadius: 4,
+    backgroundColor: Colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  checkboxLabelTablet: {
+    fontSize: 18,
+  },
+  modalHint: {
+    fontSize: 14,
+    color: Colors.neutralMedium,
+    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  modalHintTablet: {
+    fontSize: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: Colors.neutralBackground,
+  },
+  modalButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: Colors.neutralBackground,
+  },
+  modalButtonSave: {
+    backgroundColor: Colors.primary,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  modalButtonTextSave: {
+    color: Colors.white,
+  },
+  modalInputGroup: {
+    marginBottom: 20,
+  },
+  modalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  modalLabelTablet: {
+    fontSize: 18,
+  },
+  modalInput: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.neutralBackground,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.text,
+  },
+  modalInputTablet: {
+    paddingVertical: 14,
     fontSize: 18,
   },
 });
