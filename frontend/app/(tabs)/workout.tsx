@@ -91,6 +91,8 @@ export default function WorkoutScreen() {
   const [workoutExercisePaceSegments, setWorkoutExercisePaceSegments] = useState<Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }>>([{ time: '', pace: 'recovery' }]);
   // Title for reps-based workouts
   const [workoutExerciseTitle, setWorkoutExerciseTitle] = useState<string>('');
+  // Description for workout exercises
+  const [workoutExerciseDescription, setWorkoutExerciseDescription] = useState<string>('');
   // Rank-specific workout data (one for each rank)
   const [rankWorkoutData, setRankWorkoutData] = useState<{
     rookies: { time: string; reps: string; description: string; paceSegments: Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }>; multiPace: boolean };
@@ -747,6 +749,7 @@ export default function WorkoutScreen() {
       setEditingWorkoutExercise(null);
       setWorkoutExerciseType(null);
       setWorkoutExerciseTitle('');
+      setWorkoutExerciseDescription('');
       setWorkoutExerciseRank(null);
       setWorkoutExerciseTotalTime('');
       setWorkoutExerciseMultiPace(false);
@@ -2109,10 +2112,23 @@ export default function WorkoutScreen() {
                                       }
                                     }
                                     
-                                    // For reps-based, extract title from exercise name (remove rank prefix)
-                                    const displayTitle = isRepsBased 
-                                      ? exercise.name.replace(/^(Rookies|Veterans|Varsity):\s*/i, '').trim()
-                                      : null;
+                                    // Display name: for reps-based, use exercise name (which should already contain rank: title format)
+                                    // If not formatted correctly, ensure rank is shown
+                                    let displayName: string;
+                                    if (isRepsBased) {
+                                      // Check if exercise name already has rank prefix
+                                      const hasRankPrefix = /^(Rookies|Veterans|Varsity):\s*/i.test(exercise.name);
+                                      if (hasRankPrefix) {
+                                        // Use name as-is since it already has the rank
+                                        displayName = exercise.name;
+                                      } else {
+                                        // Add rank prefix if missing
+                                        displayName = `${rank.charAt(0).toUpperCase() + rank.slice(1)}: ${exercise.name}`;
+                                      }
+                                    } else {
+                                      // Time-based: just show rank
+                                      displayName = rank.charAt(0).toUpperCase() + rank.slice(1);
+                                    }
                                     
                                     return (
                                       <View key={rank} style={[styles.rankWorkoutBox, isTablet && styles.rankWorkoutBoxTablet]}>
@@ -2133,7 +2149,7 @@ export default function WorkoutScreen() {
                                         >
                                           <View style={styles.rankWorkoutHeader}>
                                             <Text style={[baseStyles.text, styles.rankWorkoutName]}>
-                                              {isRepsBased ? displayTitle : rank.charAt(0).toUpperCase() + rank.slice(1)}
+                                              {displayName}
                                             </Text>
                                             <Text style={[baseStyles.text, styles.rankWorkoutDuration]}>
                                               {isRepsBased ? reps : `${totalDuration} min`}
