@@ -7,7 +7,7 @@ import LongRun from '../../components/workoutTypes/LongRun';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { initializeAthletes } from '../../data/athletes';
-import { getLocationForDate } from '../../data/locations';
+import { getLocationForDate, setLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
 import { initializeUserRole, isCoach } from '../../data/user';
 import { addWorkout, getAllWorkouts, getWorkoutById, initializeWorkouts, removeExerciseFromWorkout, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
@@ -59,6 +59,9 @@ export default function WorkoutScreen() {
   const [workoutName, setWorkoutName] = useState('');
   const [workoutDescription, setWorkoutDescription] = useState('');
   const [selectedWorkoutType, setSelectedWorkoutType] = useState<'workout' | 'longrun' | 'recovery' | undefined>(undefined);
+  // Location for the workout (address) or OYO selection
+  const [workoutLocation, setWorkoutLocation] = useState<string>('');
+  const [isOyoSelected, setIsOyoSelected] = useState<boolean>(false);
   // Exercise editing state
   const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
@@ -330,11 +333,17 @@ export default function WorkoutScreen() {
       setWorkoutName(workout.name);
       setWorkoutDescription(workout.description || '');
       setSelectedWorkoutType(workout.workoutType);
+      // Prefill location for the current date (if present)
+      setWorkoutLocation(getLocationForDate(selectedDate) || '');
+      setIsOyoSelected(false);
     } else {
       setEditingWorkout(null);
       setWorkoutName('Workout');
       setWorkoutDescription('');
       setSelectedWorkoutType(undefined);
+      // Prefill location for the current date (if present)
+      setWorkoutLocation(getLocationForDate(selectedDate) || '');
+      setIsOyoSelected(false);
     }
     setWorkoutTypeModalVisible(true);
   };
@@ -345,8 +354,17 @@ export default function WorkoutScreen() {
       Alert.alert('Cannot Save', 'You cannot create or edit workouts from previous dates.');
       return;
     }
+    // Require a location unless the user explicitly marks this workout as OYO (On Your Own)
+    if (!isOyoSelected && !workoutLocation.trim() && !getLocationForDate(selectedDate)) {
+      Alert.alert('Location required', 'Please set a location or select OYO (On Your Own).');
+      return;
+    }
 
     try {
+      // Persist the location for the selected date if provided and not OYO
+      if (!isOyoSelected && workoutLocation.trim()) {
+        setLocationForDate(selectedDate, workoutLocation.trim());
+      }
       if (editingWorkout) {
         // Check if workout type changed
         const workoutTypeChanged = editingWorkout.workoutType !== selectedWorkoutType;
@@ -1778,7 +1796,19 @@ export default function WorkoutScreen() {
       {getLocationForDate(selectedDate) && (
         <View style={[styles.locationCard, isTablet && styles.locationCardTablet]}>
           <TouchableOpacity 
-            onPress={() => openLocationInMaps(getLocationForDate(selectedDate)!)}
+            onPress={() => {
+              // In edit mode allow editing the workout (so user can edit location)
+              if (isEditMode && isCoachUser && canEditDate) {
+                if (selectedDateWorkouts && selectedDateWorkouts.length > 0) {
+                  openWorkoutTypeSelector(selectedDateWorkouts[0]);
+                } else {
+                  openWorkoutTypeSelector();
+                }
+                return;
+              }
+              // Otherwise open maps
+              openLocationInMaps(getLocationForDate(selectedDate)!);
+            }}
             style={styles.locationContent}
             activeOpacity={0.7}
           >
@@ -3427,6 +3457,39 @@ export default function WorkoutScreen() {
                 </View>
               </View>
 
+              {/* Location */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Location
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={workoutLocation}
+                  onChangeText={setWorkoutLocation}
+                  placeholder="Enter address (tap OYO to mark On Your Own)"
+                  placeholderTextColor={Colors.neutralMedium}
+                  editable={!isOyoSelected}
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsOyoSelected(prev => {
+                      const next = !prev;
+                      if (next) {
+                        // If OYO selected, clear any entered address
+                        setWorkoutLocation('');
+                      }
+                      return next;
+                    });
+                  }}
+                  style={[styles.smallToggleButton, isOyoSelected && styles.smallToggleButtonActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[baseStyles.text, styles.smallToggleText]}>
+                    {isOyoSelected ? 'OYO — On Your Own (selected)' : 'Select OYO (On Your Own)'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Save Button */}
               <TouchableOpacity
                 onPress={saveWorkout}
@@ -4235,6 +4298,22 @@ const styles = StyleSheet.create({
   },
   modalSaveButtonTextTablet: {
     fontSize: 20,
+  },
+  smallToggleButton: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.neutralBackground,
+  },
+  smallToggleButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  smallToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
   },
   editButtonProminent: {
     flexDirection: 'row',
