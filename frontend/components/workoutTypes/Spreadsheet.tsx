@@ -135,6 +135,8 @@ interface WorkoutColumn {
   id?: string; // unique ID for custom columns
   repNumber?: number; // which rep number this is (for multi-rep columns with recordTime)
   isMultiRepNoTime?: boolean; // if true, this is a multi-rep column where reps/percentage shown in data area
+  recoveryTime?: string; // recovery time in MM:SS format (required for custom columns)
+  rank?: 'rookie' | 'veteran' | 'varsity'; // which rank this column belongs to
 }
 
 /**
@@ -222,11 +224,20 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
   const [timeDifferences, setTimeDifferences] = useState<Record<string, number | null>>({});
   // Track which dropdown is currently open: key format is "rowIndex-columnIndex"
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  // Custom columns added by the user (editable columns)
-  const [customColumns, setCustomColumns] = useState<WorkoutColumn[]>([]);
+  // Custom columns added by the user (editable columns) - organized by rank
+  const [customColumns, setCustomColumns] = useState<{
+    rookie: WorkoutColumn[];
+    veteran: WorkoutColumn[];
+    varsity: WorkoutColumn[];
+  }>({
+    rookie: [],
+    veteran: [],
+    varsity: [],
+  });
   // Modal state for adding/editing columns
   const [addColumnModalVisible, setAddColumnModalVisible] = useState(false);
   const [editingColumnIndex, setEditingColumnIndex] = useState<number | null>(null);
+  const [editingColumnRank, setEditingColumnRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
   // Form state for new column
   const [newColumnReps, setNewColumnReps] = useState<string>('');
   const [newColumnTime, setNewColumnTime] = useState<string>('');
@@ -234,6 +245,17 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
   const [newColumnRecordTime, setNewColumnRecordTime] = useState<boolean>(false);
   const [newColumnName, setNewColumnName] = useState<string>('');
   const [newColumnDistance, setNewColumnDistance] = useState<string>('');
+  const [newColumnRecoveryTime, setNewColumnRecoveryTime] = useState<string>('');
+  // Selected ranks for adding column (multi-select)
+  const [selectedRanksForColumn, setSelectedRanksForColumn] = useState<{
+    rookie: boolean;
+    veteran: boolean;
+    varsity: boolean;
+  }>({
+    rookie: false,
+    veteran: false,
+    varsity: false,
+  });
   
   // Drag and drop state
   const [draggingAthleteId, setDraggingAthleteId] = useState<string | null>(null);
@@ -384,10 +406,11 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
     });
   }, []); // Empty deps - use refs for state
 
-  // Use only custom columns (no default/fixed columns)
+  // Use only custom columns for the selected rank (no default/fixed columns)
   const workoutColumns = useMemo(() => {
-    return customColumns;
-  }, [customColumns]);
+    if (!selectedRank) return [];
+    return customColumns[selectedRank] || [];
+  }, [customColumns, selectedRank]);
 
   // Generate label for a column based on its properties
   const generateColumnLabel = useCallback((column: Partial<WorkoutColumn>): string => {
@@ -416,7 +439,25 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
     setNewColumnRecordTime(false);
     setNewColumnName('');
     setNewColumnDistance('');
+    setNewColumnRecoveryTime('');
     setEditingColumnIndex(null);
+    setEditingColumnRank(null);
+    setSelectedRanksForColumn({
+      rookie: false,
+      veteran: false,
+      varsity: false,
+    });
+  };
+
+  // Helper function to validate MM:SS format
+  const validateRecoveryTime = (timeStr: string): boolean => {
+    const parts = timeStr.trim().split(':');
+    if (parts.length !== 2) return false;
+    const minutes = parseInt(parts[0], 10);
+    const seconds = parseInt(parts[1], 10);
+    if (isNaN(minutes) || isNaN(seconds)) return false;
+    if (minutes < 0 || seconds < 0 || seconds >= 60) return false;
+    return true;
   };
 
   // Handle adding a new column
@@ -427,6 +468,27 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
       return;
     }
 
+    // Validation: recovery time is required
+    if (!newColumnRecoveryTime.trim()) {
+      Alert.alert('Validation Error', 'Recovery time is required. Please enter time in MM:SS format (e.g., 2:00).');
+      return;
+    }
+
+    // Validation: recovery time format
+    if (!validateRecoveryTime(newColumnRecoveryTime)) {
+      Alert.alert('Validation Error', 'Invalid recovery time format. Please use MM:SS format (e.g., 2:00 or 2:15).');
+      return;
+    }
+
+    // Validation: at least one rank must be selected
+    if (editingColumnIndex === null) {
+      const hasSelectedRank = selectedRanksForColumn.rookie || selectedRanksForColumn.veteran || selectedRanksForColumn.varsity;
+      if (!hasSelectedRank) {
+        Alert.alert('Validation Error', 'Please select at least one rank (Rookie, Veteran, or Varsity).');
+        return;
+      }
+    }
+
     const baseColumnData: Partial<WorkoutColumn> = {
       name: newColumnName.trim() || undefined,
       distance: newColumnDistance.trim() ? parseInt(newColumnDistance, 10) : undefined,
@@ -434,90 +496,91 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
       time: newColumnTime.trim() ? parseInt(newColumnTime, 10) : undefined,
       percentage: newColumnPercentage.trim() ? parseFloat(newColumnPercentage) / 100 : undefined,
       recordTime: newColumnRecordTime,
+      recoveryTime: newColumnRecoveryTime.trim(),
     };
 
     const repsValue = newColumnReps.trim() ? parseInt(newColumnReps, 10) : undefined;
     const hasMultipleReps = repsValue !== undefined && repsValue > 1;
 
-    if (editingColumnIndex !== null) {
+    const createColumnObjects = (): WorkoutColumn[] => {
+      const columns: WorkoutColumn[] = [];
+      
+      if (hasMultipleReps && newColumnRecordTime) {
+        // Create multiple columns (one per rep)
+        for (let rep = 1; rep <= repsValue; rep++) {
+          const repColumn: WorkoutColumn = {
+            ...baseColumnData,
+            label: baseColumnData.name || baseColumnData.distance ? 
+              (baseColumnData.name || `${baseColumnData.distance}m`) :
+              `Rep ${rep}`,
+            repNumber: rep,
+            isCustom: true,
+            id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${rep}`,
+          };
+          columns.push(repColumn);
+        }
+      } else {
+        // Single column
+        const singleColumn: WorkoutColumn = {
+          ...baseColumnData,
+          label: generateColumnLabel(baseColumnData),
+          isMultiRepNoTime: hasMultipleReps && !newColumnRecordTime,
+          isCustom: true,
+          id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        };
+        columns.push(singleColumn);
+      }
+      
+      return columns;
+    };
+
+    if (editingColumnIndex !== null && editingColumnRank) {
       // Editing existing column - replace it (or all reps if it was multi-rep)
-      const existingColumn = customColumns[editingColumnIndex];
+      const rankColumns = customColumns[editingColumnRank];
+      const existingColumn = rankColumns[editingColumnIndex];
       const isEditingMultiRep = existingColumn.repNumber !== undefined;
       
       // If editing a multi-rep column, remove all related reps
-      let columnsToKeep = customColumns;
+      let columnsToKeep = rankColumns;
       if (isEditingMultiRep) {
         const baseId = existingColumn.id?.replace(/_\d+$/, '') || existingColumn.id;
-        columnsToKeep = customColumns.filter(col => {
+        columnsToKeep = rankColumns.filter(col => {
           const colBaseId = col.id?.replace(/_\d+$/, '') || col.id;
           return colBaseId !== baseId;
         });
       } else {
         // Remove just this column
-        columnsToKeep = customColumns.filter((_, idx) => idx !== editingColumnIndex);
+        columnsToKeep = rankColumns.filter((_, idx) => idx !== editingColumnIndex);
       }
 
-      // Create new columns based on settings
-      const newColumns: WorkoutColumn[] = [];
-      
-      if (hasMultipleReps && newColumnRecordTime) {
-        // Create multiple columns (one per rep)
-        for (let rep = 1; rep <= repsValue; rep++) {
-          const repColumn: WorkoutColumn = {
-            ...baseColumnData,
-            label: baseColumnData.name || baseColumnData.distance ? 
-              (baseColumnData.name || `${baseColumnData.distance}m`) :
-              `Rep ${rep}`,
-            repNumber: rep,
-            isCustom: true,
-            id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${rep}`,
-          };
-          newColumns.push(repColumn);
-        }
-      } else {
-        // Single column
-        const singleColumn: WorkoutColumn = {
-          ...baseColumnData,
-          label: generateColumnLabel(baseColumnData),
-          isMultiRepNoTime: hasMultipleReps && !newColumnRecordTime,
-          isCustom: true,
-          id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        };
-        newColumns.push(singleColumn);
-      }
+      // Create new columns with the same rank
+      const newColumns = createColumnObjects().map(col => ({
+        ...col,
+        rank: editingColumnRank,
+      }));
 
-      setCustomColumns([...columnsToKeep, ...newColumns]);
+      setCustomColumns({
+        ...customColumns,
+        [editingColumnRank]: [...columnsToKeep, ...newColumns],
+      });
     } else {
-      // Adding new column
-      const newColumns: WorkoutColumn[] = [];
-      
-      if (hasMultipleReps && newColumnRecordTime) {
-        // Create multiple columns (one per rep)
-        for (let rep = 1; rep <= repsValue; rep++) {
-          const repColumn: WorkoutColumn = {
-            ...baseColumnData,
-            label: baseColumnData.name || baseColumnData.distance ? 
-              (baseColumnData.name || `${baseColumnData.distance}m`) :
-              `Rep ${rep}`,
-            repNumber: rep,
-            isCustom: true,
-            id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${rep}`,
-          };
-          newColumns.push(repColumn);
-        }
-      } else {
-        // Single column
-        const singleColumn: WorkoutColumn = {
-          ...baseColumnData,
-          label: generateColumnLabel(baseColumnData),
-          isMultiRepNoTime: hasMultipleReps && !newColumnRecordTime,
-          isCustom: true,
-          id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        };
-        newColumns.push(singleColumn);
-      }
+      // Adding new column - add to end of each selected rank's columns
+      const newColumns = createColumnObjects();
+      const updatedColumns = { ...customColumns };
 
-      setCustomColumns([...customColumns, ...newColumns]);
+      (['rookie', 'veteran', 'varsity'] as const).forEach(rank => {
+        if (selectedRanksForColumn[rank]) {
+          updatedColumns[rank] = [
+            ...updatedColumns[rank],
+            ...newColumns.map(col => ({
+              ...col,
+              rank,
+            })),
+          ];
+        }
+      });
+
+      setCustomColumns(updatedColumns);
     }
 
     setAddColumnModalVisible(false);
@@ -526,7 +589,9 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
 
   // Handle deleting a custom column (and all related reps if it's a multi-rep column)
   const handleDeleteColumn = (columnId: string) => {
-    const column = customColumns.find(c => c.id === columnId);
+    if (!selectedRank) return;
+    const rankColumns = customColumns[selectedRank];
+    const column = rankColumns.find(c => c.id === columnId);
     if (!column) return;
 
     Alert.alert(
@@ -540,16 +605,26 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
+            if (!selectedRank) return;
+            const rankColumns = customColumns[selectedRank];
             if (column.repNumber !== undefined) {
               // Delete all reps (find base ID)
               const baseId = columnId.replace(/_\d+$/, '');
-              setCustomColumns(customColumns.filter(col => {
+              const updatedColumns = rankColumns.filter(col => {
                 const colId = col.id?.replace(/_\d+$/, '') || col.id;
                 return colId !== baseId;
-              }));
+              });
+              setCustomColumns({
+                ...customColumns,
+                [selectedRank]: updatedColumns,
+              });
             } else {
               // Delete single column
-              setCustomColumns(customColumns.filter(col => col.id !== columnId));
+              const updatedColumns = rankColumns.filter(col => col.id !== columnId);
+              setCustomColumns({
+                ...customColumns,
+                [selectedRank]: updatedColumns,
+              });
             }
           },
         },
@@ -559,19 +634,22 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
 
   // Handle editing a custom column
   const handleEditColumn = (column: WorkoutColumn, index: number) => {
+    if (!selectedRank) return;
+    const rankColumns = customColumns[selectedRank];
+    
     // If editing a multi-rep column with repNumber, find the base column (first rep)
     let baseColumn = column;
     let actualIndex = index;
     if (column.repNumber !== undefined && column.repNumber > 1) {
       const baseId = column.id?.replace(/_\d+$/, '');
-      const firstRep = customColumns.find(col => {
+      const firstRep = rankColumns.find(col => {
         const colId = col.id?.replace(/_\d+$/, '');
         return colId === baseId && col.repNumber === 1;
       });
       if (firstRep) {
         baseColumn = firstRep;
         // Find the index of the first rep for editing
-        const firstRepIndex = customColumns.findIndex(col => col.id === firstRep.id);
+        const firstRepIndex = rankColumns.findIndex(col => col.id === firstRep.id);
         if (firstRepIndex !== -1) {
           actualIndex = firstRepIndex;
         }
@@ -584,7 +662,9 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
     setNewColumnRecordTime(baseColumn.recordTime || false);
     setNewColumnName(baseColumn.name || '');
     setNewColumnDistance(baseColumn.distance?.toString() || '');
+    setNewColumnRecoveryTime(baseColumn.recoveryTime || '');
     setEditingColumnIndex(actualIndex);
+    setEditingColumnRank(selectedRank);
     setAddColumnModalVisible(true);
   };
 
@@ -853,9 +933,10 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                           isEditMode && styles.headerCellEditable
                         ]}
                         onPress={() => {
-                          if (isEditMode) {
-                            // Find the index in customColumns array
-                            const customIndex = customColumns.findIndex(c => c.id === column.id);
+                          if (isEditMode && selectedRank) {
+                            // Find the index in the rank's customColumns array
+                            const rankColumns = customColumns[selectedRank];
+                            const customIndex = rankColumns.findIndex(c => c.id === column.id);
                             if (customIndex !== -1) {
                               Alert.alert(
                                 'Column Options',
@@ -1099,7 +1180,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                         >
                           {!isLastColumn && <View style={styles.columnDivider} />}
                           <Text style={[baseStyles.text, styles.tableCell, styles.timeCellText, isTablet && styles.tableCellTablet]}>
-                            {calculateCooldownTime(colIndex)}
+                            {column.recoveryTime || '--'}
                           </Text>
                         </View>
                       );
@@ -1330,6 +1411,67 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                     Record Time?
                   </Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Rank Selection - Required when adding, read-only when editing */}
+              {editingColumnIndex === null ? (
+                <View style={styles.modalInputGroup}>
+                  <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                    Select Rank(s) <Text style={{ color: Colors.error }}>*</Text>
+                  </Text>
+                  <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet, { marginBottom: 12, fontSize: 12 }]}>
+                    Select at least one rank. Column will be added to the end of each selected rank's columns.
+                  </Text>
+                  {(['rookie', 'veteran', 'varsity'] as const).map(rank => (
+                    <TouchableOpacity
+                      key={rank}
+                      style={styles.checkboxContainer}
+                      onPress={() => setSelectedRanksForColumn(prev => ({
+                        ...prev,
+                        [rank]: !prev[rank],
+                      }))}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.checkbox, selectedRanksForColumn[rank] && styles.checkboxChecked]}>
+                        {selectedRanksForColumn[rank] && (
+                          <Ionicons name="checkmark" size={isTablet ? 20 : 18} color={Colors.white} />
+                        )}
+                      </View>
+                      <Text style={[baseStyles.text, styles.checkboxLabel, isTablet && styles.checkboxLabelTablet]}>
+                        {rank.charAt(0).toUpperCase() + rank.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.modalInputGroup}>
+                  <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                    Rank
+                  </Text>
+                  <Text style={[baseStyles.text, styles.infoValue, isTablet && styles.infoValueTablet]}>
+                    {editingColumnRank ? editingColumnRank.charAt(0).toUpperCase() + editingColumnRank.slice(1) : 'N/A'}
+                  </Text>
+                  <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet, { marginTop: 4, fontSize: 12 }]}>
+                    Rank cannot be changed when editing a column.
+                  </Text>
+                </View>
+              )}
+
+              {/* Recovery Time Input - Required */}
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Recovery Time <Text style={{ color: Colors.error }}>*</Text>
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={newColumnRecoveryTime}
+                  onChangeText={setNewColumnRecoveryTime}
+                  placeholder="MM:SS (e.g., 2:00 or 2:15)"
+                  placeholderTextColor={Colors.neutralMedium}
+                />
+                <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet, { marginTop: 4, fontSize: 12 }]}>
+                  Required. Enter recovery time in MM:SS format.
+                </Text>
               </View>
 
               <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet]}>
@@ -2028,6 +2170,14 @@ const styles = StyleSheet.create({
   },
   modalInputTablet: {
     paddingVertical: 14,
+    fontSize: 18,
+  },
+  infoValue: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '600',
+  },
+  infoValueTablet: {
     fontSize: 18,
   },
 });

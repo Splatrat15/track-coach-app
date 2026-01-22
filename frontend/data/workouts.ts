@@ -5,8 +5,8 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Workout, Exercise } from './types';
-import { normalizeDate, getWorkoutStorageWindow, getSundayOfWeek } from '../utils/date';
+import { getWorkoutStorageWindow, normalizeDate } from '../utils/date';
+import { Exercise, Workout } from './types';
 
 const STORAGE_KEY = '@workouts';
 

@@ -5,10 +5,10 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeDate } from '../utils/date';
-import { Athlete, AttendanceRecord } from './types';
 import { clearAllBoardMessages } from './messages';
+import { Athlete, AttendanceRecord } from './types';
+import { setUserRole } from './user';
 import { resetWorkouts } from './workouts';
-import { initializeUserRole, setUserRole } from './user';
 
 const STORAGE_KEY = '@athletes';
 const ATTENDANCE_STORAGE_KEY = '@attendance_records';

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import LongRun from '../../components/workoutTypes/LongRun';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
@@ -9,9 +10,9 @@ import { initializeAthletes } from '../../data/athletes';
 import { getLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
 import { initializeUserRole, isCoach } from '../../data/user';
-import { addExerciseToWorkout, addWorkout, getAllWorkouts, getWorkoutById, initializeWorkouts, removeExerciseFromWorkout, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
+import { addWorkout, getAllWorkouts, getWorkoutById, initializeWorkouts, removeExerciseFromWorkout, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
-import { formatDate, getDateKey, isToday, normalizeDate, getWorkoutStorageWindow } from '../../utils/date';
+import { formatDate, getDateKey, getWorkoutStorageWindow, isToday, normalizeDate } from '../../utils/date';
 
 // Helper function to format pace names with abbreviations for small devices
 const formatPaceName = (pace: 'recovery' | 'self-selected' | 'steady' | 'threshold', useAbbreviation: boolean = false): string => {
@@ -137,6 +138,22 @@ export default function WorkoutScreen() {
     };
     init();
   }, []);
+
+  // Refresh coach status when screen comes into focus (e.g., after changing role in Profile)
+  useFocusEffect(
+    useCallback(() => {
+      const refresh = async () => {
+        await initializeUserRole();
+        const coachStatus = isCoach();
+        setIsCoachUser(coachStatus);
+        // If user is no longer a coach, disable edit mode
+        if (!coachStatus && isEditMode) {
+          setIsEditMode(false);
+        }
+      };
+      refresh();
+    }, [isEditMode])
+  );
 
   // Get workouts for selected date
   const selectedDateWorkouts = useMemo(() => {
@@ -688,6 +705,7 @@ export default function WorkoutScreen() {
             newRankData[rank] = {
               time: totalMinutes.toString(),
               reps: '',
+              description: '',
               paceSegments: paceSegments.length > 0 ? paceSegments : [{ time: '', pace: 'recovery' }],
               multiPace: isMultiPace,
             };
@@ -714,7 +732,7 @@ export default function WorkoutScreen() {
       
       // Check if multi-pace
       let isMultiPace = false;
-      let paceSegments: Array<{ time: string; pace: 'recovery' | 'steady' | 'threshold' }> = [];
+      let paceSegments: Array<{ time: string; pace: 'recovery' | 'self-selected' | 'steady' | 'threshold' }> = [];
       
       if (exercise.notes) {
         try {
@@ -1581,7 +1599,7 @@ export default function WorkoutScreen() {
 
     // Convert reordered exercises to dynamic exercises in workout.exercises
     // BUT: exclude any exercises that are marked as deleted
-    const reorderedDynamicExercises = newExercises
+    const reorderedDynamicExercises: Exercise[] = newExercises
       .filter(ex => {
         // Don't include exercises that are marked as deleted
         const exId = ex.id || '';
@@ -1592,13 +1610,13 @@ export default function WorkoutScreen() {
         if (templateExerciseIds.has(ex.id || '')) {
           return {
             ...ex,
-            section: section,
+            section: section as 'warmup' | 'workout' | 'postworkout',
           };
         }
         // If it's already a dynamic exercise, ensure it has the right section
         return {
           ...ex,
-          section: section,
+          section: section as 'warmup' | 'workout' | 'postworkout',
         };
       });
 
@@ -1992,19 +2010,21 @@ export default function WorkoutScreen() {
                 // 1. In edit mode (so user can add exercises to empty sections)
                 // 2. OR section has exercises
                 // 3. OR it's workout section with spreadsheet/list view (longrun/recovery)
+                // 4. OR it's workout section with workout type in list view (to allow adding workouts)
                 const shouldShowSection = isEditMode && isCoachUser && canEditDate
                   ? true // Always show in edit mode
                   : isWorkoutSection 
-                    ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun && !isRecovery) || isSpreadsheet || isLongRun || isRecovery
+                    ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun && !isRecovery) || isSpreadsheet || isLongRun || isRecovery || (workout.workoutType === 'workout' && !isSpreadsheet && !isLongRun && !isRecovery)
                     : section.exercises.length > 0;
                 
                 // For workout section: show regular exercises only when:
                 // - Not in spreadsheet view AND
                 // - Not in longrun/recovery list view (they use LongRun component) AND
                 // - Has exercises OR in edit mode (so user can add exercises)
+                // For other sections: show if has exercises OR in edit mode
                 const shouldShowRegularExercises = isWorkoutSection 
                   ? !isSpreadsheet && !isLongRun && !isRecovery && (section.exercises.length > 0 || (isEditMode && isCoachUser && canEditDate))
-                  : section.exercises.length > 0;
+                  : section.exercises.length > 0 || (isEditMode && isCoachUser && canEditDate);
                 
                 return (
                   shouldShowSection && (
@@ -2039,15 +2059,31 @@ export default function WorkoutScreen() {
                           )}
                           {/* List View - LongRun component for 'longrun' and 'recovery' types when viewMode is 'list' */}
                           {isWorkoutSection && !isSpreadsheet && (isLongRun || isRecovery) && (
-                            <LongRun 
-                              isTablet={isTablet}
-                              exercises={workoutExercises}
-                            />
+                            <>
+                              <LongRun 
+                                isTablet={isTablet}
+                                exercises={workoutExercises}
+                              />
+                              {/* Add Workout Exercise Button - allow adding even for longrun/recovery types */}
+                              {isEditMode && isCoachUser && canEditDate && (
+                                <TouchableOpacity
+                                  onPress={() => openWorkoutExerciseEditor(workout.id)}
+                                  style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                                  <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
+                                    Add Workout
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </>
                           )}
                           {/* Workout exercises with add/edit/remove buttons for workout type in list view */}
                           {isWorkoutSection && !isSpreadsheet && !isLongRun && !isRecovery && (() => {
                             // Get workout exercises (filter out template exercises)
                             // Include both time-based (has duration) and reps-based (has reps but no duration)
+                            // Also show this section even if empty (to allow adding workouts in edit mode)
                             const workoutExercises = section.exercises.filter(ex => 
                               ex.section === 'workout' && (ex.duration || (ex.reps && !ex.duration))
                             );
@@ -2486,9 +2522,9 @@ export default function WorkoutScreen() {
                               draggingSection === section.key && 
                               draggingWorkoutId === workout.id &&
                               previewInsertIndex !== null &&
-                              previewInsertIndex === exercisesToShow.length ? (
+                              previewInsertIndex === exercisesToShow.length ? [
                                 <View key="insertion-indicator-end" style={styles.insertionIndicator} />
-                              ) : null
+                              ] : []
                             );
                           })()}
                           {/* Add Exercise Button (only for warmup and postworkout in edit mode) */}
