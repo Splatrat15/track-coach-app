@@ -78,3 +78,13 @@ export interface BoardMessage {
   createdAt: Date;
 }
 
+export interface OyoSubmission {
+  id: string;
+  athleteId: string;
+  date: Date; // The date of the OYO workout
+  photoUri?: string; // URI to the photo (stored locally)
+  description?: string; // Description/notes from the athlete
+  submittedAt: Date; // Timestamp when the submission was made
+  createdAt: Date;
+}
+

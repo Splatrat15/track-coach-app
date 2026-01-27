@@ -33,7 +33,7 @@ export default function LongRun({ isTablet, exercises }: LongRunProps) {
                       {exercise.name}
                     </Text>
                     <Text style={[baseStyles.text, styles.groupDuration]}>
-                      {exercise.duration} min
+                      {exercise.duration ? Math.floor(exercise.duration / 60) : 0} min
                     </Text>
                   </View>
                   <Text style={[baseStyles.text, styles.paceType]}>

@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import LongRun from '../../components/workoutTypes/LongRun';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { initializeAthletes } from '../../data/athletes';
@@ -41,6 +40,7 @@ const formatPaceForName = (pace: 'recovery' | 'self-selected' | 'steady' | 'thre
 };
 
 export default function WorkoutScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const isSmallDevice = width < 400; // Use abbreviations on small devices (< 400px width)
@@ -334,16 +334,24 @@ export default function WorkoutScreen() {
       setWorkoutDescription(workout.description || '');
       setSelectedWorkoutType(workout.workoutType);
       // Prefill location for the current date (if present)
-      setWorkoutLocation(getLocationForDate(selectedDate) || '');
-      setIsOyoSelected(false);
+      {
+        const existingLoc = getLocationForDate(selectedDate);
+        const isOyo = existingLoc ? /^(oyo|on your own)$/i.test(existingLoc.trim()) : false;
+        setWorkoutLocation(existingLoc && !isOyo ? existingLoc : '');
+        setIsOyoSelected(isOyo);
+      }
     } else {
       setEditingWorkout(null);
       setWorkoutName('Workout');
       setWorkoutDescription('');
       setSelectedWorkoutType(undefined);
       // Prefill location for the current date (if present)
-      setWorkoutLocation(getLocationForDate(selectedDate) || '');
-      setIsOyoSelected(false);
+      {
+        const existingLoc = getLocationForDate(selectedDate);
+        const isOyo = existingLoc ? /^(oyo|on your own)$/i.test(existingLoc.trim()) : false;
+        setWorkoutLocation(existingLoc && !isOyo ? existingLoc : '');
+        setIsOyoSelected(isOyo);
+      }
     }
     setWorkoutTypeModalVisible(true);
   };
@@ -361,8 +369,12 @@ export default function WorkoutScreen() {
     }
 
     try {
-      // Persist the location for the selected date if provided and not OYO
-      if (!isOyoSelected && workoutLocation.trim()) {
+      // Persist the location for the selected date:
+      // - if OYO selected, save explicit "OYO"
+      // - otherwise save the entered address (if any)
+      if (isOyoSelected) {
+        setLocationForDate(selectedDate, 'OYO');
+      } else if (workoutLocation.trim()) {
         setLocationForDate(selectedDate, workoutLocation.trim());
       }
       if (editingWorkout) {
@@ -989,9 +1001,10 @@ export default function WorkoutScreen() {
         } else {
           // Single pace
           const pace = workoutExercisePaceSegments[0]?.pace || 'recovery';
+          // For time-based workouts, just use the rank name (duration will be shown in the box)
           exerciseName = workoutExerciseRank ? 
-            `${workoutExerciseRank.charAt(0).toUpperCase() + workoutExerciseRank.slice(1)}: ${workoutExerciseTotalTime} min` :
-            `${workoutExerciseTotalTime} min`;
+            workoutExerciseRank.charAt(0).toUpperCase() + workoutExerciseRank.slice(1) :
+            '';
         }
 
         const exerciseData: Partial<Exercise> = {
@@ -1793,50 +1806,61 @@ export default function WorkoutScreen() {
       )}
 
       {/* Location Box */}
-      {getLocationForDate(selectedDate) && (
-        <View style={[styles.locationCard, isTablet && styles.locationCardTablet]}>
-          <TouchableOpacity 
-            onPress={() => {
-              // In edit mode allow editing the workout (so user can edit location)
-              if (isEditMode && isCoachUser && canEditDate) {
-                if (selectedDateWorkouts && selectedDateWorkouts.length > 0) {
-                  openWorkoutTypeSelector(selectedDateWorkouts[0]);
+      {(() => {
+        const currentLocation = getLocationForDate(selectedDate);
+        if (!currentLocation) return null;
+        const normalized = currentLocation.trim().toLowerCase();
+        const isOyoLocation = normalized === 'oyo' || normalized === 'on your own';
+
+        return (
+          <View style={[styles.locationCard, isTablet && styles.locationCardTablet]}>
+            <TouchableOpacity
+              onPress={() => {
+                if (isEditMode) {
+                  const workoutToEdit = selectedDateWorkouts.length > 0 ? selectedDateWorkouts[0] : undefined;
+                  openWorkoutTypeSelector(workoutToEdit);
                 } else {
-                  openWorkoutTypeSelector();
+                  if (isOyoLocation) {
+                    // Navigate to OYO submissions page
+                    router.push('/(tabs)/oyo');
+                  } else {
+                    openLocationInMaps(currentLocation);
+                  }
                 }
-                return;
-              }
-              // Otherwise open maps
-              openLocationInMaps(getLocationForDate(selectedDate)!);
-            }}
-            style={styles.locationContent}
-            activeOpacity={0.7}
-          >
-            <View style={styles.locationTextContainer}>
-              <Text style={[baseStyles.text, styles.locationLabel, isTablet && styles.locationLabelTablet]}>
-                Location:
-              </Text>
-              <Text 
-                style={[baseStyles.text, styles.locationText, isTablet && styles.locationTextTablet]}
-                selectable
-              >
-                {getLocationForDate(selectedDate)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => copyAddressToClipboard(getLocationForDate(selectedDate)!)}
-            style={[styles.copyButton, isTablet && styles.copyButtonTablet]}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name="copy-outline" 
-              size={isTablet ? 24 : 20} 
-              color={Colors.primary} 
-            />
-          </TouchableOpacity>
-        </View>
-      )}
+              }}
+              style={styles.locationContent}
+              activeOpacity={0.7}
+            >
+              <View style={styles.locationTextContainer}>
+                <Text style={[baseStyles.text, styles.locationLabel, isTablet && styles.locationLabelTablet]}>
+                  Location:
+                </Text>
+                <Text
+                  style={[baseStyles.text, styles.locationText, isTablet && styles.locationTextTablet]}
+                  selectable
+                >
+                  {currentLocation}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (!isOyoLocation) {
+                  copyAddressToClipboard(currentLocation);
+                }
+              }}
+              style={[styles.copyButton, isTablet && styles.copyButtonTablet]}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="copy-outline"
+                size={isTablet ? 24 : 20}
+                color={Colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
       
       {/* Workouts for selected date */}
       {selectedDateWorkouts.length === 0 ? (
@@ -1946,8 +1970,6 @@ export default function WorkoutScreen() {
           // Get effective view mode (with defaults)
           const effectiveViewMode = getEffectiveViewMode(workout);
           const isSpreadsheet = effectiveViewMode === 'spreadsheet';
-          const isLongRun = effectiveViewMode === 'list' && workout.workoutType === 'longrun';
-          const isRecovery = workout.workoutType === 'recovery';
 
           return (
             <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet]}>
@@ -2044,16 +2066,15 @@ export default function WorkoutScreen() {
                 const shouldShowSection = isEditMode && isCoachUser && canEditDate
                   ? true // Always show in edit mode
                   : isWorkoutSection 
-                    ? (section.exercises.length > 0 && !isSpreadsheet && !isLongRun && !isRecovery) || isSpreadsheet || isLongRun || isRecovery || (workout.workoutType === 'workout' && !isSpreadsheet && !isLongRun && !isRecovery)
+                    ? (section.exercises.length > 0 && !isSpreadsheet) || isSpreadsheet || (workout.workoutType === 'workout' && !isSpreadsheet)
                     : section.exercises.length > 0;
                 
                 // For workout section: show regular exercises only when:
                 // - Not in spreadsheet view AND
-                // - Not in longrun/recovery list view (they use LongRun component) AND
                 // - Has exercises OR in edit mode (so user can add exercises)
                 // For other sections: show if has exercises OR in edit mode
                 const shouldShowRegularExercises = isWorkoutSection 
-                  ? !isSpreadsheet && !isLongRun && !isRecovery && (section.exercises.length > 0 || (isEditMode && isCoachUser && canEditDate))
+                  ? !isSpreadsheet && (section.exercises.length > 0 || (isEditMode && isCoachUser && canEditDate))
                   : section.exercises.length > 0 || (isEditMode && isCoachUser && canEditDate);
                 
                 return (
@@ -2087,30 +2108,8 @@ export default function WorkoutScreen() {
                               isEditMode={isEditMode}
                             />
                           )}
-                          {/* List View - LongRun component for 'longrun' and 'recovery' types when viewMode is 'list' */}
-                          {isWorkoutSection && !isSpreadsheet && (isLongRun || isRecovery) && (
-                            <>
-                              <LongRun 
-                                isTablet={isTablet}
-                                exercises={workoutExercises}
-                              />
-                              {/* Add Workout Exercise Button - allow adding even for longrun/recovery types */}
-                              {isEditMode && isCoachUser && canEditDate && (
-                                <TouchableOpacity
-                                  onPress={() => openWorkoutExerciseEditor(workout.id)}
-                                  style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
-                                  <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
-                                    Add Workout
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
-                            </>
-                          )}
-                          {/* Workout exercises with add/edit/remove buttons for workout type in list view */}
-                          {isWorkoutSection && !isSpreadsheet && !isLongRun && !isRecovery && (() => {
+                          {/* Workout exercises with add/edit/remove buttons - same display for all types (workout, longrun, recovery) in list view */}
+                          {isWorkoutSection && !isSpreadsheet && (() => {
                             // Get workout exercises (filter out template exercises)
                             // Include both time-based (has duration) and reps-based (has reps but no duration)
                             // Also show this section even if empty (to allow adding workouts in edit mode)
@@ -2161,13 +2160,18 @@ export default function WorkoutScreen() {
                                     
                                     // Get pace (only for time-based workouts)
                                     let paceText = '';
+                                    let isMultiPace = false;
                                     if (!isRepsBased) {
                                       if (exercise.pace) {
+                                        // Single pace
                                         paceText = formatPaceName(exercise.pace, isSmallDevice);
+                                        isMultiPace = false;
                                       } else if (exercise.notes) {
                                         try {
                                           const segments = JSON.parse(exercise.notes);
                                           if (Array.isArray(segments) && segments.length > 0) {
+                                            // Multi-pace
+                                            isMultiPace = true;
                                             paceText = segments.map((seg: any) => 
                                               `${seg.time} ${formatPaceName(seg.pace, isSmallDevice)}`
                                             ).join(', ');
@@ -2179,7 +2183,8 @@ export default function WorkoutScreen() {
                                     }
                                     
                                     // Display name: for reps-based, use exercise name (which should already contain rank: title format)
-                                    // If not formatted correctly, ensure rank is shown
+                                    // For multi-pace, use exercise name (which includes pace description)
+                                    // For single-pace (time-based), just show rank name (duration is shown in the box)
                                     let displayName: string;
                                     if (isRepsBased) {
                                       // Check if exercise name already has rank prefix
@@ -2191,8 +2196,11 @@ export default function WorkoutScreen() {
                                         // Add rank prefix if missing
                                         displayName = `${rank.charAt(0).toUpperCase() + rank.slice(1)}: ${exercise.name}`;
                                       }
+                                    } else if (isMultiPace) {
+                                      // Multi-pace: use exercise name which includes pace description
+                                      displayName = exercise.name;
                                     } else {
-                                      // Time-based: just show rank
+                                      // Single-pace time-based: just show rank name (duration is shown in the box)
                                       displayName = rank.charAt(0).toUpperCase() + rank.slice(1);
                                     }
                                     
@@ -3505,6 +3513,7 @@ export default function WorkoutScreen() {
           </View>
         </View>
       </Modal>
+
     </ScrollView>
   );
 }
