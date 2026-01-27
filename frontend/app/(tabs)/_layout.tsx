@@ -1,6 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/styles';
 
 export default function TabLayout() {
@@ -55,6 +55,20 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="attendance/[id]"
+        options={{
+          href: null, // Hide from tab bar
+          headerShown: false, // Hide header, we have custom Go Back button
+        }}
+      />
+      <Tabs.Screen
+        name="oyo"
+        options={{
+          href: null, // Hide from tab bar
+          headerShown: false, // Hide header, we have custom header
+        }}
+      />
+      <Tabs.Screen
+        name="oyo/[id]"
         options={{
           href: null, // Hide from tab bar
           headerShown: false, // Hide header, we have custom Go Back button
