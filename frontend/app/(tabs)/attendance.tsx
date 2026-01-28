@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
-import { addAthlete, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords, refetchAttendanceRecords } from '../../data/athletes';
+import { addAthlete, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords, refetchAthletes, refetchAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 import { formatDate, getAttendanceStorageWindow, getDateKey, isToday, normalizeDate } from '../../utils/date';
 
@@ -30,7 +30,7 @@ export default function AttendanceScreen() {
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Attendance window: past 14 days through today
+  // Attendance window: past 7 days through today (older records auto-deleted in DB)
   const storageWindow = useMemo(() => getAttendanceStorageWindow(), []);
 
   // Initialize data on mount
@@ -61,10 +61,11 @@ export default function AttendanceScreen() {
     }
   }, [selectedDate, storageWindow]);
 
-  // Refresh attendance from database when screen comes into focus (e.g. after check-in)
+  // Refresh athletes and attendance from database when screen comes into focus (e.g. after check-in or add/remove elsewhere)
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
+        await refetchAthletes();
         await refetchAttendanceRecords();
         setAthletes([...getAllAthletes()]);
       };

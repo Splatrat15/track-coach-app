@@ -125,6 +125,14 @@ export async function initializeAthletes(): Promise<void> {
 }
 
 /**
+ * Refetch athletes from Supabase and update cache.
+ * Call this when a screen that shows the athlete list gains focus (e.g. after add/remove on another tab).
+ */
+export async function refetchAthletes(): Promise<void> {
+  athletes = await loadAthletes();
+}
+
+/**
  * Clear local-only data (board messages, workouts, user role).
  * Athletes and attendance live in Supabase and are not cleared.
  */
@@ -359,8 +367,30 @@ function attendanceRecordToRow(record: AttendanceRecord): any {
   };
 }
 
+/**
+ * Delete attendance records older than the 7-day window to minimize storage.
+ * Called whenever we load attendance so old rows are auto-removed.
+ */
+async function deleteAttendanceRecordsOutsideWindow(): Promise<void> {
+  try {
+    const { startDate } = getAttendanceStorageWindow();
+    const cutoffStr = startDate.toISOString().slice(0, 10);
+    const { error } = await supabase
+      .from('attendance_records')
+      .delete()
+      .lt('date', cutoffStr);
+    if (error) {
+      console.warn('Error deleting old attendance records:', error.message);
+      return;
+    }
+  } catch (error) {
+    console.warn('Error in attendance cleanup:', error);
+  }
+}
+
 async function loadAttendanceRecords(): Promise<AttendanceRecord[]> {
   try {
+    await deleteAttendanceRecordsOutsideWindow();
     const { startDate, endDate } = getAttendanceStorageWindow();
     const startStr = startDate.toISOString().slice(0, 10);
     const endStr = endDate.toISOString().slice(0, 10);
@@ -446,6 +476,7 @@ export async function addAttendanceRecord(
     throw new Error(`Failed to add attendance record: ${error.message}`);
   }
   attendanceRecords.push(newRecord);
+  void deleteAttendanceRecordsOutsideWindow();
   return newRecord;
 }
 

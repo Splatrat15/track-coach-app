@@ -5,7 +5,7 @@ import { ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
-import { getAllAthletes, getAthleteName } from '../../data/athletes';
+import { getAllAthletes, getAthleteName, refetchAthletes } from '../../data/athletes';
 import { getOyoSubmissionsByDate, initializeOyoSubmissions } from '../../data/oyoSubmissions';
 import { Athlete, OyoSubmission } from '../../data/types';
 import { formatDate, formatTimeArizona, getDateKey, normalizeDate } from '../../utils/date';
@@ -64,13 +64,13 @@ export default function OyoSubmissionsScreen() {
     init();
   }, [selectedDate, loadSubmissions]);
 
-  // Refresh submissions when screen comes into focus
+  // Refresh submissions and athlete list when screen comes into focus (e.g. after add/remove on Attendance)
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
+        await refetchAthletes();
         await initializeOyoSubmissions();
         loadSubmissions();
-        // Force re-render by updating athletes state
         setAthletes([...getAllAthletes()]);
       };
       refresh();

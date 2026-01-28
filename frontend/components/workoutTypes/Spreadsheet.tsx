@@ -10,6 +10,8 @@ interface SpreadsheetProps {
   workoutType?: 'workout' | 'longrun' | 'recovery';
   isTablet: boolean;
   isEditMode?: boolean;
+  /** When this changes, athlete list is reloaded (e.g. after add/remove on another tab). */
+  athleteRefreshTrigger?: number;
 }
 
 /**
@@ -217,7 +219,7 @@ function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Workout
   return columns;
 }
 
-export default function Spreadsheet({ workoutType, isTablet, isEditMode = false }: SpreadsheetProps) {
+export default function Spreadsheet({ workoutType, isTablet, isEditMode = false, athleteRefreshTrigger }: SpreadsheetProps) {
   const { colors } = useTheme();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
@@ -295,6 +297,13 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
   useEffect(() => {
     loadAthletes();
   }, [loadAthletes]);
+
+  // Reload athletes when parent signals refresh (e.g. after add/remove on Attendance tab)
+  useEffect(() => {
+    if (athleteRefreshTrigger !== undefined && athleteRefreshTrigger > 0) {
+      loadAthletes();
+    }
+  }, [athleteRefreshTrigger, loadAthletes]);
 
   // Auto-scroll dropdown to center (0 option) when it opens
   useEffect(() => {

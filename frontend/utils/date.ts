@@ -141,13 +141,14 @@ export function getSundayOfWeek(date: Date): Date {
 }
 
 /**
- * Get the 2-week window for attendance storage (past 14 days only, no future).
- * Returns an object with startDate (14 days ago) and endDate (today).
+ * Get the 7-day window for attendance storage (past 7 days only, no future).
+ * Returns an object with startDate (7 days ago) and endDate (today).
+ * Records outside this range are auto-deleted to minimize storage.
  */
 export function getAttendanceStorageWindow(): { startDate: Date; endDate: Date } {
   const today = normalizeDate(new Date());
   const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 14);
+  startDate.setDate(startDate.getDate() - 7);
   return {
     startDate: normalizeDate(startDate),
     endDate: today,

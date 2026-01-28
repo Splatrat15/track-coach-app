@@ -6,7 +6,7 @@ import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, 
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { useTheme } from '../../contexts/ThemeContext';
-import { initializeAthletes } from '../../data/athletes';
+import { initializeAthletes, refetchAthletes } from '../../data/athletes';
 import { getLocationForDate, initializeLocations, setLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
 import { initializeUserRole, isCoach } from '../../data/user';
@@ -145,12 +145,15 @@ export default function WorkoutScreen() {
     init();
   }, []);
 
-  // Refresh coach status when screen comes into focus (e.g., after changing role in Profile)
+  // Refresh coach status and athlete list when screen comes into focus (e.g., after add/remove on Attendance)
+  const [athleteListRefreshTrigger, setAthleteListRefreshTrigger] = useState(0);
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
         await initializeUserRole();
         await initializeLocations();
+        await refetchAthletes();
+        setAthleteListRefreshTrigger(t => t + 1);
         const coachStatus = isCoach();
         setIsCoachUser(coachStatus);
         // If user is no longer a coach, disable edit mode
@@ -2115,6 +2118,7 @@ export default function WorkoutScreen() {
                               workoutType={workout.workoutType}
                               isTablet={isTablet}
                               isEditMode={isEditMode}
+                              athleteRefreshTrigger={athleteListRefreshTrigger}
                             />
                           )}
                           {/* Workout exercises with add/edit/remove buttons - same display for all types (workout, longrun, recovery) in list view */}
