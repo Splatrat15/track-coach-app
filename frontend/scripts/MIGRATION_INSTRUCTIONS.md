@@ -72,3 +72,24 @@ This creates:
 - Warm-up and other exercises are stored in `workout_exercises` and loaded with each workout.
 - The app loads workouts in the 3-week window from Supabase on init and when the workout tab is focused.
 - `data/locations.ts` now delegates to workouts (location comes from the database).
+
+---
+
+# OYO Submissions Migration to Supabase
+
+## Create the Database Table
+
+1. Go to your Supabase dashboard: https://supabase.com/dashboard
+2. Select your project
+3. Go to SQL Editor: https://supabase.com/dashboard/project/_/sql
+4. Copy and paste the contents of `create-oyo-submissions-table.sql`
+5. Click "Run" to execute the SQL
+
+This creates the **oyo_submissions** table with one row per athlete per day (`athlete_id`, `date`), plus `photo_uri`, `description`, `submitted_at`, and `created_at`.
+
+## What Changed
+
+- OYO submissions are now stored in Supabase instead of AsyncStorage.
+- One record per athlete per day; `submitted_at` stores the timestamp when they submitted.
+- Records outside the 3-week window (last week Monday to next week Sunday) are deleted from the DB on load/refetch, same as workouts.
+- All existing OYO screens and behavior (submit only for today, view by date, timestamps) are unchanged.
