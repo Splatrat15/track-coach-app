@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,10 +7,11 @@ import { Colors, baseStyles } from '../../constants/styles';
 import { getAllAthletes, getAthleteName } from '../../data/athletes';
 import { getOyoSubmissionsByDate, initializeOyoSubmissions } from '../../data/oyoSubmissions';
 import { Athlete, OyoSubmission } from '../../data/types';
-import { formatTimeArizona, normalizeDate } from '../../utils/date';
+import { formatDate, formatTimeArizona, getDateKey, normalizeDate } from '../../utils/date';
 
 export default function OyoSubmissionsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ date?: string }>();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
@@ -18,21 +19,47 @@ export default function OyoSubmissionsScreen() {
   const [submissions, setSubmissions] = useState<Map<string, OyoSubmission>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
 
-  // Get today's date for checking submissions
+  // Get the selected date from params, default to today
+  const selectedDate = useMemo(() => {
+    if (params.date) {
+      // Parse date from YYYY-MM-DD format
+      const [year, month, day] = params.date.split('-').map(Number);
+      return normalizeDate(new Date(year, month - 1, day));
+    }
+    return normalizeDate(new Date());
+  }, [params.date]);
+
+  // Get today's date for checking if submissions are allowed
   const today = useMemo(() => {
     return normalizeDate(new Date());
   }, []);
 
-  // Initialize data on mount
+  // Check if the selected date is today (only today allows submissions)
+  const isToday = useMemo(() => {
+    return selectedDate.getTime() === today.getTime();
+  }, [selectedDate, today]);
+
+  // Load submissions for the selected date
+  const loadSubmissions = useCallback(() => {
+    const dateSubmissions = getOyoSubmissionsByDate(selectedDate);
+    const submissionsMap = new Map<string, OyoSubmission>();
+    dateSubmissions.forEach(sub => {
+      submissionsMap.set(sub.athleteId, sub);
+    });
+    setSubmissions(submissionsMap);
+  }, [selectedDate]);
+
+  // Initialize data on mount and when date changes
   useEffect(() => {
     const init = async () => {
+      setIsLoading(true);
       await initializeOyoSubmissions();
       setAthletes(getAllAthletes());
       loadSubmissions();
       setIsLoading(false);
     };
     init();
-  }, []);
+  }, [selectedDate, loadSubmissions]);
 
   // Refresh submissions when screen comes into focus
   useFocusEffect(
@@ -44,17 +71,8 @@ export default function OyoSubmissionsScreen() {
         setAthletes([...getAllAthletes()]);
       };
       refresh();
-    }, [])
+    }, [loadSubmissions])
   );
-
-  const loadSubmissions = () => {
-    const dateSubmissions = getOyoSubmissionsByDate(today);
-    const submissionsMap = new Map<string, OyoSubmission>();
-    dateSubmissions.forEach(sub => {
-      submissionsMap.set(sub.athleteId, sub);
-    });
-    setSubmissions(submissionsMap);
-  };
 
   // Check if an athlete has submitted today
   const hasAthleteSubmitted = (athleteId: string): boolean => {
@@ -87,9 +105,10 @@ export default function OyoSubmissionsScreen() {
     return { submitted, notSubmitted };
   }, [sortedAthletes, submissions]);
 
-  // Navigate to athlete submission screen
+  // Navigate to athlete submission screen with the selected date
   const handleAthletePress = (athleteId: string) => {
-    router.push(`/(tabs)/oyo/${athleteId}`);
+    const dateKey = getDateKey(selectedDate);
+    router.push(`/(tabs)/oyo/${athleteId}?date=${dateKey}`);
   };
 
   // Navigate back to workout page
@@ -128,8 +147,11 @@ export default function OyoSubmissionsScreen() {
           <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
             OYO Submissions
           </Text>
+          <Text style={[baseStyles.text, styles.dateLabel, isTablet && styles.dateLabelTablet]}>
+            {formatDate(selectedDate)}
+          </Text>
           <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
-            Tap a name to submit
+            {isToday ? 'Tap a name to submit' : 'View only - Submissions only allowed for today'}
           </Text>
         </View>
 
@@ -190,7 +212,11 @@ export default function OyoSubmissionsScreen() {
               <TouchableOpacity
                 key={athlete.id}
                 onPress={() => handleAthletePress(athlete.id)}
-                style={[styles.athleteRow, isTablet && styles.athleteRowTablet]}
+                style={[
+                  styles.athleteRow, 
+                  isTablet && styles.athleteRowTablet,
+                  !isToday && styles.athleteRowViewOnly
+                ]}
                 activeOpacity={0.7}
               >
                 <View style={styles.athleteNameContainer}>
@@ -276,6 +302,16 @@ const styles = StyleSheet.create({
     fontSize: 52,
     marginBottom: 12,
   },
+  dateLabel: {
+    fontSize: 18,
+    color: Colors.primary,
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  dateLabelTablet: {
+    fontSize: 22,
+  },
   subtitle: {
     fontSize: 16,
     color: Colors.textLight,
@@ -336,6 +372,9 @@ const styles = StyleSheet.create({
     paddingVertical: 22,
     paddingHorizontal: 8,
     borderRadius: 16,
+  },
+  athleteRowViewOnly: {
+    opacity: 0.7,
   },
   athleteNameContainer: {
     flexDirection: 'column',

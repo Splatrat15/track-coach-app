@@ -6,7 +6,7 @@ import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, 
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { initializeAthletes } from '../../data/athletes';
-import { getLocationForDate, setLocationForDate } from '../../data/locations';
+import { getLocationForDate, initializeLocations, setLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
 import { initializeUserRole, isCoach } from '../../data/user';
 import { addWorkout, getAllWorkouts, getWorkoutById, initializeWorkouts, removeExerciseFromWorkout, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
@@ -126,6 +126,7 @@ export default function WorkoutScreen() {
       await initializeUserRole();
       await initializeAthletes();
       await initializeWorkouts();
+      await initializeLocations();
       setWorkouts(getAllWorkouts());
       setIsCoachUser(isCoach());
       
@@ -147,6 +148,7 @@ export default function WorkoutScreen() {
     useCallback(() => {
       const refresh = async () => {
         await initializeUserRole();
+        await initializeLocations();
         const coachStatus = isCoach();
         setIsCoachUser(coachStatus);
         // If user is no longer a coach, disable edit mode
@@ -373,9 +375,9 @@ export default function WorkoutScreen() {
       // - if OYO selected, save explicit "OYO"
       // - otherwise save the entered address (if any)
       if (isOyoSelected) {
-        setLocationForDate(selectedDate, 'OYO');
+        await setLocationForDate(selectedDate, 'OYO');
       } else if (workoutLocation.trim()) {
-        setLocationForDate(selectedDate, workoutLocation.trim());
+        await setLocationForDate(selectedDate, workoutLocation.trim());
       }
       if (editingWorkout) {
         // Check if workout type changed
@@ -1821,8 +1823,9 @@ export default function WorkoutScreen() {
                   openWorkoutTypeSelector(workoutToEdit);
                 } else {
                   if (isOyoLocation) {
-                    // Navigate to OYO submissions page
-                    router.push('/(tabs)/oyo');
+                    // Navigate to OYO submissions page with selected date
+                    const dateKey = getDateKey(selectedDate);
+                    router.push(`/(tabs)/oyo?date=${dateKey}`);
                   } else {
                     openLocationInMaps(currentLocation);
                   }

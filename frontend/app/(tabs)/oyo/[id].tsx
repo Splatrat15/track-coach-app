@@ -15,7 +15,7 @@ import { formatTimeArizona, normalizeDate } from '../../../utils/date';
 
 export default function AthleteOyoSubmissionScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, date } = useLocalSearchParams<{ id: string; date?: string }>();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
@@ -30,8 +30,23 @@ export default function AthleteOyoSubmissionScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Get today's date
+  // Get the selected date from params, default to today
+  const selectedDate = useMemo(() => {
+    if (date) {
+      // Parse date from YYYY-MM-DD format
+      const [year, month, day] = date.split('-').map(Number);
+      return normalizeDate(new Date(year, month - 1, day));
+    }
+    return normalizeDate(new Date());
+  }, [date]);
+
+  // Get today's date for checking if submissions are allowed
   const today = normalizeDate(new Date());
+  
+  // Check if the selected date is today (only today allows submissions)
+  const isToday = useMemo(() => {
+    return selectedDate.getTime() === today.getTime();
+  }, [selectedDate, today]);
 
   useEffect(() => {
     const init = async () => {
@@ -49,21 +64,21 @@ export default function AthleteOyoSubmissionScreen() {
         if (athleteData) {
           setAthlete(athleteData);
           
-          // Check if already submitted today
-          const submissions = getOyoSubmissionsByDate(today);
-          const todaySubmission = submissions.find(s => s.athleteId === id);
-          if (todaySubmission) {
+          // Check if already submitted for the selected date
+          const submissions = getOyoSubmissionsByDate(selectedDate);
+          const dateSubmission = submissions.find(s => s.athleteId === id);
+          if (dateSubmission) {
             setHasSubmitted(true);
-            setPhotoUri(todaySubmission.photoUri);
-            setDescription(todaySubmission.description || '');
-            setSubmissionTime(todaySubmission.submittedAt);
+            setPhotoUri(dateSubmission.photoUri);
+            setDescription(dateSubmission.description || '');
+            setSubmissionTime(dateSubmission.submittedAt);
           }
         }
       }
       setIsLoading(false);
     };
     init();
-  }, [id, today]);
+  }, [id, selectedDate]);
 
   const handlePickImage = async () => {
     try {
@@ -149,6 +164,15 @@ export default function AthleteOyoSubmissionScreen() {
   const handleSubmit = async () => {
     if (!athlete || !id) return;
     
+    // Only allow submitting for today
+    if (!isToday) {
+      Alert.alert(
+        'Submission Not Allowed',
+        'You can only submit OYO workouts for today. Past and future dates are view-only.'
+      );
+      return;
+    }
+    
     if (!photoUri && !description.trim()) {
       Alert.alert(
         'Submission Required',
@@ -161,7 +185,7 @@ export default function AthleteOyoSubmissionScreen() {
     try {
       await addOyoSubmission({
         athleteId: id,
-        date: today,
+        date: selectedDate,
         photoUri,
         description: description.trim() || undefined,
         submittedAt: new Date(),
@@ -172,9 +196,10 @@ export default function AthleteOyoSubmissionScreen() {
       setShowModal(true);
       setHasSubmitted(true);
       setSubmissionTime(new Date());
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting OYO:', error);
-      Alert.alert('Error', 'Failed to save submission. Please try again.');
+      const errorMessage = error?.message || 'Failed to save submission. Please try again.';
+      Alert.alert('Error', errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -214,6 +239,16 @@ export default function AthleteOyoSubmissionScreen() {
         <Text style={[baseStyles.heading, styles.athleteName, isTablet && styles.athleteNameTablet]}>
           {athlete ? getAthleteName(athlete) : ''}
         </Text>
+        {!isToday && (
+          <Text style={[baseStyles.text, styles.viewOnlyNote, isTablet && styles.viewOnlyNoteTablet]}>
+            View Only - Submissions only allowed for today
+          </Text>
+        )}
+        {!hasSubmitted && isToday && (
+          <Text style={[baseStyles.text, styles.submissionNote, isTablet && styles.submissionNoteTablet]}>
+            Submissions are only allowed for today
+          </Text>
+        )}
       </View>
 
       <ScrollView
@@ -224,64 +259,79 @@ export default function AthleteOyoSubmissionScreen() {
       >
         {!hasSubmitted ? (
           <View style={styles.contentContainer}>
-            {/* Photo Section */}
-            <View style={styles.photoSection}>
-              <Text style={[baseStyles.text, styles.label, isTablet && styles.labelTablet]}>
-                Photo (optional)
-              </Text>
-              {photoUri ? (
-                <View style={styles.photoContainer}>
-                  <Image source={{ uri: photoUri }} style={styles.photo} />
-                  <TouchableOpacity
-                    style={styles.removePhotoButton}
-                    onPress={handleRemovePhoto}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="close-circle" size={32} color={Colors.error} />
-                  </TouchableOpacity>
+            {!isToday ? (
+              // View-only mode for past/future dates
+              <View style={styles.viewOnlyContainer}>
+                <Text style={[baseStyles.text, styles.viewOnlyText, isTablet && styles.viewOnlyTextTablet]}>
+                  No submission for this date
+                </Text>
+                <Text style={[baseStyles.text, styles.viewOnlySubtext, isTablet && styles.viewOnlySubtextTablet]}>
+                  Submissions are only allowed for today
+                </Text>
+              </View>
+            ) : (
+              // Submission form (only for today)
+              <>
+                {/* Photo Section */}
+                <View style={styles.photoSection}>
+                  <Text style={[baseStyles.text, styles.label, isTablet && styles.labelTablet]}>
+                    Photo (optional)
+                  </Text>
+                  {photoUri ? (
+                    <View style={styles.photoContainer}>
+                      <Image source={{ uri: photoUri }} style={styles.photo} />
+                      <TouchableOpacity
+                        style={styles.removePhotoButton}
+                        onPress={handleRemovePhoto}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="close-circle" size={32} color={Colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.addPhotoButton, isTablet && styles.addPhotoButtonTablet]}
+                      onPress={handleShowImageOptions}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="camera-outline" size={isTablet ? 32 : 28} color={Colors.primary} />
+                      <Text style={[baseStyles.text, styles.addPhotoText, isTablet && styles.addPhotoTextTablet]}>
+                        Add Photo
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              ) : (
+
+                {/* Description Section */}
+                <View style={styles.descriptionSection}>
+                  <Text style={[baseStyles.text, styles.label, isTablet && styles.labelTablet]}>
+                    Description (optional)
+                  </Text>
+                  <TextInput
+                    style={[styles.descriptionInput, isTablet && styles.descriptionInputTablet]}
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Add notes about your workout…"
+                    placeholderTextColor={Colors.neutralMedium}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                {/* Submit Button */}
                 <TouchableOpacity
-                  style={[styles.addPhotoButton, isTablet && styles.addPhotoButtonTablet]}
-                  onPress={handleShowImageOptions}
+                  onPress={handleSubmit}
+                  style={[styles.submitButton, isTablet && styles.submitButtonTablet, submitting && styles.submitButtonDisabled]}
+                  disabled={submitting}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="camera-outline" size={isTablet ? 32 : 28} color={Colors.primary} />
-                  <Text style={[baseStyles.text, styles.addPhotoText, isTablet && styles.addPhotoTextTablet]}>
-                    Add Photo
+                  <Text style={[styles.submitButtonText, isTablet && styles.submitButtonTextTablet]}>
+                    {submitting ? 'Submitting…' : 'Submit OYO'}
                   </Text>
                 </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Description Section */}
-            <View style={styles.descriptionSection}>
-              <Text style={[baseStyles.text, styles.label, isTablet && styles.labelTablet]}>
-                Description (optional)
-              </Text>
-              <TextInput
-                style={[styles.descriptionInput, isTablet && styles.descriptionInputTablet]}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Add notes about your workout…"
-                placeholderTextColor={Colors.neutralMedium}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-              onPress={handleSubmit}
-              style={[styles.submitButton, isTablet && styles.submitButtonTablet, submitting && styles.submitButtonDisabled]}
-              disabled={submitting}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.submitButtonText, isTablet && styles.submitButtonTextTablet]}>
-                {submitting ? 'Submitting…' : 'Submit OYO'}
-              </Text>
-            </TouchableOpacity>
+              </>
+            )}
           </View>
         ) : (
           <View style={styles.contentContainer}>
@@ -385,6 +435,44 @@ const styles = StyleSheet.create({
   },
   athleteNameTablet: {
     fontSize: 48,
+  },
+  submissionNote: {
+    fontSize: 14,
+    color: Colors.textLight,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  submissionNoteTablet: {
+    fontSize: 16,
+  },
+  viewOnlyNote: {
+    fontSize: 14,
+    color: Colors.error,
+    marginTop: 8,
+    fontWeight: '600',
+  },
+  viewOnlyNoteTablet: {
+    fontSize: 16,
+  },
+  viewOnlyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  viewOnlyText: {
+    fontSize: 20,
+    color: Colors.text,
+    fontWeight: '600',
+  },
+  viewOnlyTextTablet: {
+    fontSize: 24,
+  },
+  viewOnlySubtext: {
+    fontSize: 16,
+    color: Colors.textLight,
+  },
+  viewOnlySubtextTablet: {
+    fontSize: 18,
   },
   scrollView: {
     flex: 1,
