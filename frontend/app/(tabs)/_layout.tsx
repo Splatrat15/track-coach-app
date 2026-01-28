@@ -1,22 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
-import { Colors } from '../../constants/styles';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function TabLayout() {
+  const { colors } = useTheme();
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: Colors.white,
+          backgroundColor: colors.neutralLight,
           borderTopWidth: 2,
-          borderTopColor: Colors.neutralMedium,
+          borderTopColor: colors.neutralMedium,
           paddingBottom: Platform.OS === 'ios' ? 24 : 12,
           paddingTop: 12,
           height: Platform.OS === 'ios' ? 92 : 72,
-          shadowColor: Colors.black,
+          shadowColor: colors.black,
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
           shadowRadius: 8,
@@ -28,14 +29,14 @@ export default function TabLayout() {
           letterSpacing: 0.2,
         },
         headerStyle: {
-          backgroundColor: Colors.primary,
-          shadowColor: Colors.black,
+          backgroundColor: colors.primary,
+          shadowColor: colors.black,
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: 0.2,
           shadowRadius: 4,
           elevation: 8,
         },
-        headerTintColor: Colors.white,
+        headerTintColor: colors.white,
         headerTitleStyle: {
           fontWeight: '800',
           fontSize: 20,

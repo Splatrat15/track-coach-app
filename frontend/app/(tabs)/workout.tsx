@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
+import { useTheme } from '../../contexts/ThemeContext';
 import { initializeAthletes } from '../../data/athletes';
 import { getLocationForDate, initializeLocations, setLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
@@ -42,6 +43,7 @@ const formatPaceForName = (pace: 'recovery' | 'self-selected' | 'steady' | 'thre
 export default function WorkoutScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
   const isTablet = width >= 768;
   const isSmallDevice = width < 400; // Use abbreviations on small devices (< 400px width)
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -1706,7 +1708,7 @@ export default function WorkoutScreen() {
 
   return (
     <ScrollView 
-      style={[baseStyles.container, styles.container]}
+      style={[styles.container, { flex: 1, backgroundColor: colors.neutralBackground }]}
       contentContainerStyle={[
         styles.contentContainer,
         isTablet && styles.contentContainerTablet
@@ -1714,35 +1716,36 @@ export default function WorkoutScreen() {
       scrollEnabled={!draggingExerciseId}
     >
       <View style={[styles.header, isTablet && styles.headerTablet]}>
-        <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
+        <Text style={[styles.title, isTablet && styles.titleTablet, { color: colors.primary }]}>
           Workout
         </Text>
-        <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
+        <Text style={[styles.subtitle, isTablet && styles.subtitleTablet, { color: colors.textLight }]}>
           Track your training sessions
         </Text>
       </View>
 
       {/* Date Navigation */}
-      <View style={[styles.dateNavigation, isTablet && styles.dateNavigationTablet]}>
+      <View style={[styles.dateNavigation, isTablet && styles.dateNavigationTablet, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium, shadowColor: colors.primary }]}>
         <TouchableOpacity 
           onPress={goToPreviousDate}
           disabled={!canGoPrevious}
           style={[
             styles.arrowButton, 
             isTablet && styles.arrowButtonTablet,
-            !canGoPrevious && styles.arrowButtonDisabled
+            !canGoPrevious && styles.arrowButtonDisabled,
+            { backgroundColor: !canGoPrevious ? colors.neutralMedium : colors.neutralBackground, borderColor: colors.neutralMedium }
           ]}
           activeOpacity={0.7}
         >
           <Ionicons 
             name="chevron-back" 
             size={isTablet ? 32 : 24} 
-            color={canGoPrevious ? Colors.primary : Colors.neutralMedium} 
+            color={canGoPrevious ? colors.primary : colors.neutralMedium} 
           />
         </TouchableOpacity>
         
         <View style={styles.dateDisplay}>
-          <Text style={[baseStyles.heading, styles.dateText, isTablet && styles.dateTextTablet]}>
+          <Text style={[styles.dateText, isTablet && styles.dateTextTablet, { color: colors.primary }]}>
             {formatDate(selectedDate)}
           </Text>
         </View>
@@ -1753,14 +1756,15 @@ export default function WorkoutScreen() {
           style={[
             styles.arrowButton, 
             isTablet && styles.arrowButtonTablet,
-            !canGoNext && styles.arrowButtonDisabled
+            !canGoNext && styles.arrowButtonDisabled,
+            { backgroundColor: !canGoNext ? colors.neutralMedium : colors.neutralBackground, borderColor: colors.neutralMedium }
           ]}
           activeOpacity={0.7}
         >
           <Ionicons 
             name="chevron-forward" 
             size={isTablet ? 32 : 24} 
-            color={canGoNext ? Colors.primary : Colors.neutralMedium} 
+            color={canGoNext ? colors.primary : colors.neutralMedium} 
           />
         </TouchableOpacity>
       </View>
@@ -1773,7 +1777,9 @@ export default function WorkoutScreen() {
             styles.editButtonProminent,
             isTablet && styles.editButtonProminentTablet,
             isEditMode && styles.editButtonProminentActive,
-            !canEditDate && styles.editButtonProminentDisabled
+            !canEditDate && styles.editButtonProminentDisabled,
+            isEditMode && { backgroundColor: colors.primary },
+            canEditDate && !isEditMode && { borderColor: colors.primary }
           ]}
           activeOpacity={0.7}
           disabled={!canEditDate && !isEditMode}
@@ -1781,7 +1787,7 @@ export default function WorkoutScreen() {
           <Ionicons
             name={isEditMode ? "checkmark-circle" : "create-outline"}
             size={isTablet ? 24 : 20}
-            color={isEditMode ? Colors.white : (canEditDate ? Colors.primary : Colors.neutralMedium)}
+            color={isEditMode ? colors.white : (canEditDate ? colors.primary : colors.neutralMedium)}
           />
           <Text style={[
             styles.editButtonProminentText,
@@ -1801,7 +1807,7 @@ export default function WorkoutScreen() {
           style={[styles.todayButton, isTablet && styles.todayButtonTablet]}
           activeOpacity={0.7}
         >
-          <Text style={[baseStyles.text, styles.todayButtonText, isTablet && styles.todayButtonTextTablet]}>
+          <Text style={[styles.todayButtonText, isTablet && styles.todayButtonTextTablet, { color: colors.primary }]}>
             Today
           </Text>
         </TouchableOpacity>
@@ -1815,7 +1821,7 @@ export default function WorkoutScreen() {
         const isOyoLocation = normalized === 'oyo' || normalized === 'on your own';
 
         return (
-          <View style={[styles.locationCard, isTablet && styles.locationCardTablet]}>
+          <View style={[styles.locationCard, isTablet && styles.locationCardTablet, { backgroundColor: colors.neutralLight, borderLeftColor: colors.secondary, borderColor: colors.neutralMedium, shadowColor: colors.secondary }]}>
             <TouchableOpacity
               onPress={() => {
                 if (isEditMode) {
@@ -1835,11 +1841,11 @@ export default function WorkoutScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.locationTextContainer}>
-                <Text style={[baseStyles.text, styles.locationLabel, isTablet && styles.locationLabelTablet]}>
+                <Text style={[styles.locationLabel, isTablet && styles.locationLabelTablet, { color: colors.text }]}>
                   Location:
                 </Text>
                 <Text
-                  style={[baseStyles.text, styles.locationText, isTablet && styles.locationTextTablet]}
+                  style={[styles.locationText, isTablet && styles.locationTextTablet, { color: colors.text }]}
                   selectable
                 >
                   {currentLocation}
@@ -1858,7 +1864,7 @@ export default function WorkoutScreen() {
               <Ionicons
                 name="copy-outline"
                 size={isTablet ? 24 : 20}
-                color={Colors.primary}
+                color={colors.primary}
               />
             </TouchableOpacity>
           </View>
@@ -1867,8 +1873,8 @@ export default function WorkoutScreen() {
       
       {/* Workouts for selected date */}
       {selectedDateWorkouts.length === 0 ? (
-        <View style={[styles.card, isTablet && styles.cardTablet]}>
-          <Text style={[baseStyles.text, styles.cardText]}>
+        <View style={[styles.card, isTablet && styles.cardTablet, { backgroundColor: colors.neutralLight, shadowColor: colors.primary, borderColor: colors.neutralMedium }]}>
+          <Text style={[styles.cardText, { color: colors.text }]}>
             No practice today
           </Text>
           {isEditMode && isCoachUser && canEditDate && (
@@ -1877,8 +1883,8 @@ export default function WorkoutScreen() {
               style={[styles.addWorkoutButton, isTablet && styles.addWorkoutButtonTablet]}
               activeOpacity={0.7}
             >
-              <Ionicons name="add" size={isTablet ? 28 : 24} color={Colors.white} />
-              <Text style={[baseStyles.text, styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet]}>
+              <Ionicons name="add" size={isTablet ? 28 : 24} color={colors.white} />
+              <Text style={[styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet, { color: colors.white }]}>
                 Add Workout
               </Text>
             </TouchableOpacity>
@@ -1975,10 +1981,10 @@ export default function WorkoutScreen() {
           const isSpreadsheet = effectiveViewMode === 'spreadsheet';
 
           return (
-            <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet]}>
+            <View key={workout.id} style={[styles.card, isTablet && styles.cardTablet, { backgroundColor: colors.neutralLight, shadowColor: colors.primary, borderColor: colors.neutralMedium }]}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardTitleContainer}>
-                  <Text style={[baseStyles.text, styles.cardTitle]}>
+                  <Text style={[styles.cardTitle, { color: colors.primary }]}>
                     {workout.name}
                   </Text>
                   {workout.description && (
@@ -1993,7 +1999,7 @@ export default function WorkoutScreen() {
                     style={[styles.editWorkoutButton, isTablet && styles.editWorkoutButtonTablet]}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="create-outline" size={isTablet ? 24 : 20} color={Colors.primary} />
+                    <Ionicons name="create-outline" size={isTablet ? 24 : 20} color={colors.primary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -2095,7 +2101,7 @@ export default function WorkoutScreen() {
                           <Ionicons
                             name={isExpanded ? "chevron-down" : "chevron-forward"}
                             size={isTablet ? 28 : 24}
-                            color={Colors.white}
+                            color={colors.white}
                             style={styles.sectionArrow}
                           />
                         </View>
@@ -2215,7 +2221,7 @@ export default function WorkoutScreen() {
                                             style={styles.deleteExerciseButton}
                                             activeOpacity={0.7}
                                           >
-                                            <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={Colors.secondary} />
+                                            <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={colors.secondary} />
                                           </TouchableOpacity>
                                         )}
                                         <TouchableOpacity
@@ -2254,7 +2260,7 @@ export default function WorkoutScreen() {
                                       style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
                                       activeOpacity={0.7}
                                     >
-                                      <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                                      <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={colors.primary} />
                                       <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
                                         Add Workout
                                       </Text>
@@ -2276,7 +2282,7 @@ export default function WorkoutScreen() {
                                           style={styles.deleteExerciseButton}
                                           activeOpacity={0.7}
                                         >
-                                          <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={Colors.secondary} />
+                                          <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={colors.secondary} />
                                         </TouchableOpacity>
                                       )}
                                       <TouchableOpacity
@@ -2309,7 +2315,7 @@ export default function WorkoutScreen() {
                                     style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
                                     activeOpacity={0.7}
                                   >
-                                    <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                                    <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={colors.primary} />
                                     <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
                                       Add Workout
                                     </Text>
@@ -2337,7 +2343,7 @@ export default function WorkoutScreen() {
                                     <Ionicons
                                       name={isStridesExpanded ? "chevron-down" : "chevron-forward"}
                                       size={20}
-                                      color={Colors.primary}
+                                      color={colors.primary}
                                     />
                                   </View>
                                 </TouchableOpacity>
@@ -2420,7 +2426,7 @@ export default function WorkoutScreen() {
                                     style={styles.deleteExerciseButton}
                                     activeOpacity={0.7}
                                   >
-                                    <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={Colors.secondary} />
+                                    <Ionicons name="remove-circle" size={isTablet ? 28 : 24} color={colors.secondary} />
                                   </TouchableOpacity>
                                 )}
                                 <TouchableOpacity
@@ -2576,7 +2582,7 @@ export default function WorkoutScreen() {
                               style={[styles.addExerciseButton, isTablet && styles.addExerciseButtonTablet]}
                               activeOpacity={0.7}
                             >
-                              <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.primary} />
+                              <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={colors.primary} />
                               <Text style={[baseStyles.text, styles.addExerciseButtonText, isTablet && styles.addExerciseButtonTextTablet]}>
                                 Add Exercise
                               </Text>
@@ -2611,7 +2617,7 @@ export default function WorkoutScreen() {
                 style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={isTablet ? 28 : 24} color={Colors.text} />
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -2626,7 +2632,7 @@ export default function WorkoutScreen() {
                   value={exerciseName}
                   onChangeText={setExerciseName}
                   placeholder="Enter exercise name"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                 />
               </View>
 
@@ -2687,7 +2693,7 @@ export default function WorkoutScreen() {
                       value={exerciseRankData.rookies}
                       onChangeText={(text) => setExerciseRankData(prev => ({ ...prev, rookies: text }))}
                       placeholder="Enter value"
-                      placeholderTextColor={Colors.neutralMedium}
+                      placeholderTextColor={colors.neutralMedium}
                       keyboardType="numeric"
                     />
                   </View>
@@ -2700,7 +2706,7 @@ export default function WorkoutScreen() {
                       value={exerciseRankData.veterans}
                       onChangeText={(text) => setExerciseRankData(prev => ({ ...prev, veterans: text }))}
                       placeholder="Enter value"
-                      placeholderTextColor={Colors.neutralMedium}
+                      placeholderTextColor={colors.neutralMedium}
                       keyboardType="numeric"
                     />
                   </View>
@@ -2713,7 +2719,7 @@ export default function WorkoutScreen() {
                       value={exerciseRankData.varsity}
                       onChangeText={(text) => setExerciseRankData(prev => ({ ...prev, varsity: text }))}
                       placeholder="Enter value"
-                      placeholderTextColor={Colors.neutralMedium}
+                      placeholderTextColor={colors.neutralMedium}
                       keyboardType="numeric"
                     />
                   </View>
@@ -2730,7 +2736,7 @@ export default function WorkoutScreen() {
                   value={exerciseReps}
                   onChangeText={setExerciseReps}
                   placeholder="Enter number of reps"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -2744,7 +2750,7 @@ export default function WorkoutScreen() {
                   value={exerciseSets}
                   onChangeText={setExerciseSets}
                   placeholder="Enter number of sets"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -2758,7 +2764,7 @@ export default function WorkoutScreen() {
                   value={exerciseDuration}
                   onChangeText={setExerciseDuration}
                   placeholder="Enter duration in minutes"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -2772,7 +2778,7 @@ export default function WorkoutScreen() {
                   value={exerciseDistance}
                   onChangeText={setExerciseDistance}
                   placeholder="Enter distance in meters"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -2788,7 +2794,7 @@ export default function WorkoutScreen() {
                     value={exerciseNotes}
                     onChangeText={setExerciseNotes}
                     placeholder="Enter notes"
-                    placeholderTextColor={Colors.neutralMedium}
+                    placeholderTextColor={colors.neutralMedium}
                     multiline
                     numberOfLines={3}
                   />
@@ -2829,7 +2835,7 @@ export default function WorkoutScreen() {
                 style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={isTablet ? 28 : 24} color={Colors.text} />
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -2892,7 +2898,7 @@ export default function WorkoutScreen() {
                     value={workoutExerciseTitle}
                     onChangeText={setWorkoutExerciseTitle}
                     placeholder="Enter workout title"
-                    placeholderTextColor={Colors.neutralMedium}
+                    placeholderTextColor={colors.neutralMedium}
                   />
                 </View>
               )}
@@ -2925,7 +2931,7 @@ export default function WorkoutScreen() {
                                   }));
                                 }}
                                 placeholder="Enter number of reps"
-                                placeholderTextColor={Colors.neutralMedium}
+                                placeholderTextColor={colors.neutralMedium}
                                 keyboardType="numeric"
                               />
                             </View>
@@ -2944,7 +2950,7 @@ export default function WorkoutScreen() {
                                   }));
                                 }}
                                 placeholder="Enter description for this rank"
-                                placeholderTextColor={Colors.neutralMedium}
+                                placeholderTextColor={colors.neutralMedium}
                                 multiline
                                 numberOfLines={3}
                               />
@@ -2967,7 +2973,7 @@ export default function WorkoutScreen() {
                                   }));
                                 }}
                                 placeholder="Enter total time"
-                                placeholderTextColor={Colors.neutralMedium}
+                                placeholderTextColor={colors.neutralMedium}
                                 keyboardType="numeric"
                               />
                             </View>
@@ -3056,7 +3062,7 @@ export default function WorkoutScreen() {
                                       });
                                     }}
                                     placeholder="Time (min)"
-                                    placeholderTextColor={Colors.neutralMedium}
+                                    placeholderTextColor={colors.neutralMedium}
                                     keyboardType="numeric"
                                   />
                                   {rankData.paceSegments.length > 1 && (
@@ -3073,7 +3079,7 @@ export default function WorkoutScreen() {
                                       style={styles.removeSegmentButton}
                                       activeOpacity={0.7}
                                     >
-                                      <Ionicons name="close-circle" size={24} color={Colors.error} />
+                                      <Ionicons name="close-circle" size={24} color={colors.error} />
                                     </TouchableOpacity>
                                   )}
                                 </View>
@@ -3123,7 +3129,7 @@ export default function WorkoutScreen() {
                               style={styles.addSegmentButton}
                               activeOpacity={0.7}
                             >
-                              <Ionicons name="add-circle" size={24} color={Colors.primary} />
+                              <Ionicons name="add-circle" size={24} color={colors.primary} />
                               <Text style={[baseStyles.text, styles.addSegmentButtonText]}>
                                 Add Segment
                               </Text>
@@ -3183,7 +3189,7 @@ export default function WorkoutScreen() {
                       value={workoutExerciseTotalTime}
                       onChangeText={setWorkoutExerciseTotalTime}
                       placeholder="Enter total time"
-                      placeholderTextColor={Colors.neutralMedium}
+                      placeholderTextColor={colors.neutralMedium}
                       keyboardType="numeric"
                     />
                   </View>
@@ -3257,7 +3263,7 @@ export default function WorkoutScreen() {
                                 setWorkoutExercisePaceSegments(newSegments);
                               }}
                               placeholder="Time (min)"
-                              placeholderTextColor={Colors.neutralMedium}
+                              placeholderTextColor={colors.neutralMedium}
                               keyboardType="numeric"
                             />
                             {workoutExercisePaceSegments.length > 1 && (
@@ -3269,7 +3275,7 @@ export default function WorkoutScreen() {
                                 style={styles.removeSegmentButton}
                                 activeOpacity={0.7}
                               >
-                                <Ionicons name="close-circle" size={24} color={Colors.error} />
+                                <Ionicons name="close-circle" size={24} color={colors.error} />
                               </TouchableOpacity>
                             )}
                           </View>
@@ -3308,7 +3314,7 @@ export default function WorkoutScreen() {
                         style={styles.addSegmentButton}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name="add-circle" size={24} color={Colors.primary} />
+                        <Ionicons name="add-circle" size={24} color={colors.primary} />
                         <Text style={[baseStyles.text, styles.addSegmentButtonText]}>
                           Add Segment
                         </Text>
@@ -3357,7 +3363,7 @@ export default function WorkoutScreen() {
                       value={workoutExerciseReps}
                       onChangeText={setWorkoutExerciseReps}
                       placeholder="Enter number of reps"
-                      placeholderTextColor={Colors.neutralMedium}
+                      placeholderTextColor={colors.neutralMedium}
                       keyboardType="numeric"
                     />
                   </View>
@@ -3404,7 +3410,7 @@ export default function WorkoutScreen() {
                 style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={isTablet ? 28 : 24} color={Colors.text} />
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -3419,7 +3425,7 @@ export default function WorkoutScreen() {
                   value={workoutName}
                   onChangeText={setWorkoutName}
                   placeholder="Enter workout name"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                 />
               </View>
 
@@ -3433,7 +3439,7 @@ export default function WorkoutScreen() {
                   value={workoutDescription}
                   onChangeText={setWorkoutDescription}
                   placeholder="Enter description"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   multiline
                   numberOfLines={3}
                 />
@@ -3478,7 +3484,7 @@ export default function WorkoutScreen() {
                   value={workoutLocation}
                   onChangeText={setWorkoutLocation}
                   placeholder="Enter address (tap OYO to mark On Your Own)"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   editable={!isOyoSelected}
                 />
                 <TouchableOpacity

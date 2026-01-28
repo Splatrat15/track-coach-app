@@ -14,7 +14,8 @@ import {
   Alert,
   useWindowDimensions 
 } from 'react-native';
-import { Colors, baseStyles } from '../../constants/styles';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../constants/themes';
 import { addBoardMessage, getAllBoardMessages, initializeBoardMessages } from '../../data/messages';
 import { BoardMessage } from '../../data/types';
 import { filterProfanity } from '../../utils/profanity';
@@ -23,6 +24,7 @@ import { formatTextWithLinks, TextSegment } from '../../utils/links';
 export default function MessagesScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
+  const { colors } = useTheme();
   const [messages, setMessages] = useState<BoardMessage[]>([]);
   const [header, setHeader] = useState('');
   const [author, setAuthor] = useState('');
@@ -115,14 +117,15 @@ export default function MessagesScreen() {
 
   const renderMessageContent = (text: string) => {
     const segments = formatTextWithLinks(text);
+    const s = getStyles(colors);
     return (
-      <Text style={styles.messageContentText}>
+      <Text style={s.messageContentText}>
         {segments.map((segment: TextSegment, index: number) => {
           if (segment.type === 'link' && segment.url) {
             return (
               <Text
                 key={index}
-                style={styles.linkText}
+                style={s.linkText}
                 onPress={() => handleLinkPress(segment.url!)}
               >
                 {segment.content}
@@ -135,9 +138,10 @@ export default function MessagesScreen() {
     );
   };
 
+  const s = getStyles(colors);
   return (
     <KeyboardAvoidingView
-      style={[baseStyles.container, styles.container]}
+      style={[styles.containerBase, s.container]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
@@ -150,42 +154,42 @@ export default function MessagesScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.header, isTablet && styles.headerTablet]}>
-          <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
+          <Text style={[s.title, isTablet && styles.titleTablet]}>
             Message Board
           </Text>
-          <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
+          <Text style={[s.subtitle, isTablet && styles.subtitleTablet]}>
             Share messages with the team
           </Text>
         </View>
 
         {/* Post Form */}
-        <View style={[styles.formCard, isTablet && styles.formCardTablet]}>
-          <Text style={[baseStyles.heading, styles.formTitle, isTablet && styles.formTitleTablet]}>
+        <View style={[s.formCard, isTablet && styles.formCardTablet]}>
+          <Text style={[s.formTitle, isTablet && styles.formTitleTablet]}>
             Post a Message
           </Text>
           
           <TextInput
-            style={[styles.input, isTablet && styles.inputTablet]}
+            style={[s.input, isTablet && styles.inputTablet]}
             placeholder="Header/Title"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             value={header}
             onChangeText={setHeader}
             maxLength={100}
           />
           
           <TextInput
-            style={[styles.input, isTablet && styles.inputTablet]}
+            style={[s.input, isTablet && styles.inputTablet]}
             placeholder="Your Name"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             value={author}
             onChangeText={setAuthor}
             maxLength={50}
           />
           
           <TextInput
-            style={[styles.textArea, isTablet && styles.textAreaTablet]}
+            style={[s.textArea, isTablet && styles.textAreaTablet]}
             placeholder="Message content... (links will be clickable)"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             value={content}
             onChangeText={setContent}
             multiline
@@ -196,15 +200,15 @@ export default function MessagesScreen() {
           
           <TouchableOpacity
             style={[
-              styles.submitButton,
+              s.submitButton,
               isSubmitting && styles.submitButtonDisabled,
               isTablet && styles.submitButtonTablet
             ]}
             onPress={handleSubmit}
             disabled={isSubmitting}
           >
-            <Ionicons name="send" size={isTablet ? 24 : 20} color={Colors.white} />
-            <Text style={[styles.submitButtonText, isTablet && styles.submitButtonTextTablet]}>
+            <Ionicons name="send" size={isTablet ? 24 : 20} color={colors.white} />
+            <Text style={[s.submitButtonText, isTablet && styles.submitButtonTextTablet]}>
               {isSubmitting ? 'Posting...' : 'Post Message'}
             </Text>
           </TouchableOpacity>
@@ -212,30 +216,30 @@ export default function MessagesScreen() {
 
         {/* Messages List */}
         <View style={styles.messagesSection}>
-          <Text style={[baseStyles.heading, styles.sectionTitle, isTablet && styles.sectionTitleTablet]}>
+          <Text style={[s.sectionTitle, isTablet && styles.sectionTitleTablet]}>
             Messages ({messages.length})
           </Text>
           
           {messages.length === 0 ? (
-            <View style={[styles.emptyCard, isTablet && styles.emptyCardTablet]}>
-              <Ionicons name="chatbubbles-outline" size={isTablet ? 64 : 48} color={Colors.textMuted} />
-              <Text style={[baseStyles.text, styles.emptyText, isTablet && styles.emptyTextTablet]}>
+            <View style={[s.emptyCard, isTablet && styles.emptyCardTablet]}>
+              <Ionicons name="chatbubbles-outline" size={isTablet ? 64 : 48} color={colors.textMuted} />
+              <Text style={[s.emptyText, isTablet && styles.emptyTextTablet]}>
                 No messages yet. Be the first to post!
               </Text>
             </View>
           ) : (
             messages.map((message) => (
-              <View key={message.id} style={[styles.messageCard, isTablet && styles.messageCardTablet]}>
-                <View style={styles.messageHeader}>
+              <View key={message.id} style={[s.messageCard, isTablet && styles.messageCardTablet]}>
+                <View style={[s.messageHeader]}>
                   <View style={styles.messageHeaderLeft}>
-                    <Text style={[baseStyles.heading, styles.messageHeaderText, isTablet && styles.messageHeaderTextTablet]}>
+                    <Text style={[s.messageHeaderText, isTablet && styles.messageHeaderTextTablet]}>
                       {message.header}
                     </Text>
-                    <Text style={[baseStyles.text, styles.messageAuthor, isTablet && styles.messageAuthorTablet]}>
+                    <Text style={[s.messageAuthor, isTablet && styles.messageAuthorTablet]}>
                       by {message.author}
                     </Text>
                   </View>
-                  <Text style={[baseStyles.text, styles.messageTime, isTablet && styles.messageTimeTablet]}>
+                  <Text style={[s.messageTime, isTablet && styles.messageTimeTablet]}>
                     {formatDate(message.createdAt)}
                   </Text>
                 </View>
@@ -252,8 +256,149 @@ export default function MessagesScreen() {
   );
 }
 
+function getStyles(colors: ThemeColors) {
+  return {
+    container: {
+      flex: 1,
+      backgroundColor: colors.neutralBackground,
+    },
+    title: {
+      fontSize: 32,
+      marginBottom: 8,
+      fontWeight: 'bold' as const,
+      color: colors.text,
+    },
+    subtitle: {
+      fontSize: 16,
+      opacity: 0.7,
+      color: colors.text,
+    },
+    formCard: {
+      backgroundColor: colors.neutralLight,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 24,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    formTitle: {
+      fontSize: 20,
+      marginBottom: 16,
+      fontWeight: 'bold' as const,
+      color: colors.text,
+    },
+    input: {
+      backgroundColor: colors.neutralBackground,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 16,
+      color: colors.text,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.neutralMedium,
+    },
+    textArea: {
+      backgroundColor: colors.neutralBackground,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 16,
+      color: colors.text,
+      marginBottom: 16,
+      minHeight: 100,
+      borderWidth: 1,
+      borderColor: colors.neutralMedium,
+    },
+    submitButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      padding: 14,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 8,
+    },
+    submitButtonText: {
+      color: colors.white,
+      fontSize: 16,
+      fontWeight: '600' as const,
+    },
+    sectionTitle: {
+      fontSize: 24,
+      marginBottom: 16,
+      fontWeight: 'bold' as const,
+      color: colors.text,
+    },
+    emptyCard: {
+      backgroundColor: colors.neutralLight,
+      borderRadius: 12,
+      padding: 40,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    emptyText: {
+      fontSize: 16,
+      color: colors.textMuted,
+      marginTop: 16,
+      textAlign: 'center' as const,
+    },
+    messageCard: {
+      backgroundColor: colors.neutralLight,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 16,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    messageHeader: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'flex-start' as const,
+      marginBottom: 12,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.neutralMedium,
+    },
+    messageHeaderText: {
+      fontSize: 18,
+      marginBottom: 4,
+      fontWeight: 'bold' as const,
+      color: colors.text,
+    },
+    messageAuthor: {
+      fontSize: 14,
+      color: colors.textLight,
+    },
+    messageTime: {
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    messageContentText: {
+      fontSize: 16,
+      lineHeight: 24,
+      color: colors.text,
+    },
+    linkText: {
+      fontSize: 16,
+      lineHeight: 24,
+      color: colors.primary,
+      textDecorationLine: 'underline' as const,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
-  container: {
+  containerBase: {
     flex: 1,
   },
   scrollView: {
@@ -275,53 +420,20 @@ const styles = StyleSheet.create({
   headerTablet: {
     marginBottom: 32,
   },
-  title: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
   titleTablet: {
     fontSize: 48,
   },
-  subtitle: {
-    fontSize: 16,
-    opacity: 0.7,
-  },
   subtitleTablet: {
     fontSize: 20,
-  },
-  formCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   formCardTablet: {
     padding: 32,
     borderRadius: 16,
     marginBottom: 32,
   },
-  formTitle: {
-    fontSize: 20,
-    marginBottom: 16,
-  },
   formTitleTablet: {
     fontSize: 28,
     marginBottom: 24,
-  },
-  input: {
-    backgroundColor: Colors.neutralLight,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: Colors.text,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.neutralMedium,
   },
   inputTablet: {
     padding: 16,
@@ -329,32 +441,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 12,
   },
-  textArea: {
-    backgroundColor: Colors.neutralLight,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: Colors.text,
-    marginBottom: 16,
-    minHeight: 100,
-    borderWidth: 1,
-    borderColor: Colors.neutralMedium,
-  },
   textAreaTablet: {
     padding: 16,
     fontSize: 18,
     minHeight: 120,
     marginBottom: 24,
     borderRadius: 12,
-  },
-  submitButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
   },
   submitButtonTablet: {
     padding: 18,
@@ -364,115 +456,45 @@ const styles = StyleSheet.create({
   submitButtonDisabled: {
     opacity: 0.6,
   },
-  submitButtonText: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
   submitButtonTextTablet: {
     fontSize: 20,
   },
   messagesSection: {
     marginTop: 8,
   },
-  sectionTitle: {
-    fontSize: 24,
-    marginBottom: 16,
-  },
   sectionTitleTablet: {
     fontSize: 32,
     marginBottom: 24,
-  },
-  emptyCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   emptyCardTablet: {
     padding: 60,
     borderRadius: 16,
   },
-  emptyText: {
-    fontSize: 16,
-    color: Colors.textMuted,
-    marginTop: 16,
-    textAlign: 'center',
-  },
   emptyTextTablet: {
     fontSize: 20,
     marginTop: 24,
-  },
-  messageCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   messageCardTablet: {
     padding: 32,
     borderRadius: 16,
     marginBottom: 24,
   },
-  messageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutralMedium,
-  },
   messageHeaderLeft: {
     flex: 1,
     marginRight: 12,
-  },
-  messageHeaderText: {
-    fontSize: 18,
-    marginBottom: 4,
   },
   messageHeaderTextTablet: {
     fontSize: 24,
     marginBottom: 6,
   },
-  messageAuthor: {
-    fontSize: 14,
-    color: Colors.textLight,
-  },
   messageAuthorTablet: {
     fontSize: 18,
-  },
-  messageTime: {
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   messageTimeTablet: {
     fontSize: 16,
   },
   messageContent: {
     marginTop: 8,
-  },
-  messageContentText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: Colors.text,
-  },
-  linkText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: Colors.primary,
-    textDecorationLine: 'underline',
   },
 });
 

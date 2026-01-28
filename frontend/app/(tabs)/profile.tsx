@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { Colors, baseStyles } from '../../constants/styles';
+import { Alert, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 import { getUserRole, initializeUserRole, setUserRole, UserRole } from '../../data/user';
 
 export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
+  const { isDark, colors, toggleTheme } = useTheme();
   const [userRole, setUserRoleState] = useState<UserRole>('coach');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -56,45 +57,74 @@ export default function ProfileScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Text style={[baseStyles.text, styles.loadingText]}>Loading...</Text>
+      <View style={[styles.container(colors), styles.centered]}>
+        <Text style={[styles.loadingText(colors)]}>Loading...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView 
-      style={styles.container}
+      style={styles.container(colors)}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
       {/* Profile Header */}
       <View style={[styles.profileHeader, isTablet && styles.profileHeaderTablet]}>
-        <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
-          <Ionicons name="person" size={isTablet ? 80 : 64} color={Colors.primary} />
+        <View style={[styles.avatarContainer(colors), isTablet && styles.avatarContainerTablet]}>
+          <Ionicons name="person" size={isTablet ? 80 : 64} color={colors.primary} />
         </View>
-        <Text style={[baseStyles.heading, styles.profileName, isTablet && styles.profileNameTablet]}>
+        <Text style={[styles.profileName(colors), isTablet && styles.profileNameTablet]}>
           Profile
         </Text>
-        <Text style={[baseStyles.text, styles.profileSubtitle, isTablet && styles.profileSubtitleTablet]}>
+        <Text style={[styles.profileSubtitle(colors), isTablet && styles.profileSubtitleTablet]}>
           Manage your account settings
         </Text>
       </View>
 
+      {/* Dark Mode Toggle */}
+      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+          Appearance
+        </Text>
+        <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+          Choose your preferred color theme
+        </Text>
+        <TouchableOpacity
+          style={[styles.themeToggle(colors), isTablet && styles.themeToggleTablet]}
+          onPress={toggleTheme}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isDark ? 'moon' : 'sunny'}
+            size={isTablet ? 28 : 24}
+            color={colors.primary}
+          />
+          <Text style={styles.themeToggleText(colors)}>
+            {isDark ? 'Dark Mode' : 'Light Mode'}
+          </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={isTablet ? 24 : 20}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+      </View>
+
       {/* User Role Section */}
-      <View style={[styles.section, isTablet && styles.sectionTablet]}>
-        <Text style={[baseStyles.heading, styles.sectionTitle, isTablet && styles.sectionTitleTablet]}>
+      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
           Account Type
         </Text>
-        <Text style={[baseStyles.text, styles.sectionDescription, isTablet && styles.sectionDescriptionTablet]}>
+        <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
           Select your role to customize your experience
         </Text>
 
         <View style={styles.roleContainer}>
           <TouchableOpacity
             style={[
-              styles.roleButton,
-              userRole === 'coach' && styles.roleButtonActive,
+              styles.roleButton(colors),
+              userRole === 'coach' && styles.roleButtonActive(colors),
               isTablet && styles.roleButtonTablet,
             ]}
             onPress={() => handleRoleChange('coach')}
@@ -103,11 +133,11 @@ export default function ProfileScreen() {
             <Ionicons 
               name="people" 
               size={isTablet ? 32 : 28} 
-              color={userRole === 'coach' ? Colors.white : Colors.primary} 
+              color={userRole === 'coach' ? colors.white : colors.primary} 
             />
             <Text
               style={[
-                styles.roleButtonText,
+                styles.roleButtonText(colors),
                 userRole === 'coach' && styles.roleButtonTextActive,
                 isTablet && styles.roleButtonTextTablet,
               ]}
@@ -115,14 +145,14 @@ export default function ProfileScreen() {
               Coach
             </Text>
             {userRole === 'coach' && (
-              <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={Colors.white} />
+              <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
-              styles.roleButton,
-              userRole === 'athlete' && styles.roleButtonActive,
+              styles.roleButton(colors),
+              userRole === 'athlete' && styles.roleButtonActive(colors),
               isTablet && styles.roleButtonTablet,
             ]}
             onPress={() => handleRoleChange('athlete')}
@@ -131,11 +161,11 @@ export default function ProfileScreen() {
             <Ionicons 
               name="person" 
               size={isTablet ? 32 : 28} 
-              color={userRole === 'athlete' ? Colors.white : Colors.primary} 
+              color={userRole === 'athlete' ? colors.white : colors.primary} 
             />
             <Text
               style={[
-                styles.roleButtonText,
+                styles.roleButtonText(colors),
                 userRole === 'athlete' && styles.roleButtonTextActive,
                 isTablet && styles.roleButtonTextTablet,
               ]}
@@ -143,24 +173,24 @@ export default function ProfileScreen() {
               Athlete
             </Text>
             {userRole === 'athlete' && (
-              <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={Colors.white} />
+              <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
             )}
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Info Section */}
-      <View style={[styles.section, isTablet && styles.sectionTablet]}>
-        <Text style={[baseStyles.heading, styles.sectionTitle, isTablet && styles.sectionTitleTablet]}>
+      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
           About
         </Text>
         <View style={styles.infoItem}>
-          <Ionicons name="information-circle-outline" size={isTablet ? 24 : 20} color={Colors.textLight} />
+          <Ionicons name="information-circle-outline" size={isTablet ? 24 : 20} color={colors.textLight} />
           <View style={styles.infoContent}>
-            <Text style={[baseStyles.text, styles.infoLabel, isTablet && styles.infoLabelTablet]}>
+            <Text style={[styles.infoLabel(colors), isTablet && styles.infoLabelTablet]}>
               Current Role
             </Text>
-            <Text style={[baseStyles.text, styles.infoValue, isTablet && styles.infoValueTablet]}>
+            <Text style={[styles.infoValue(colors), isTablet && styles.infoValueTablet]}>
               {userRole === 'coach' ? 'Coach' : 'Athlete'}
             </Text>
           </View>
@@ -170,25 +200,27 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+type ThemeColors = import('../../constants/themes').ThemeColors;
+
+const styles = {
+  container: (colors: ThemeColors) => ({
     flex: 1,
-    backgroundColor: Colors.neutralBackground,
-  },
+    backgroundColor: colors.neutralBackground,
+  }),
   contentContainer: {
     padding: 16,
     paddingBottom: 32,
   },
   centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  loadingText: {
+  loadingText: (colors: ThemeColors) => ({
     fontSize: 16,
-    color: Colors.textLight,
-  },
+    color: colors.textLight,
+  }),
   profileHeader: {
-    alignItems: 'center',
+    alignItems: 'center' as const,
     paddingVertical: 32,
     marginBottom: 24,
   },
@@ -196,135 +228,158 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     marginBottom: 32,
   },
-  avatarContainer: {
+  avatarContainer: (colors: ThemeColors) => ({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: colors.neutralLight,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     marginBottom: 16,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
     borderWidth: 3,
-    borderColor: Colors.primary,
-  },
+    borderColor: colors.primary,
+  }),
   avatarContainerTablet: {
     width: 150,
     height: 150,
     borderRadius: 75,
     marginBottom: 20,
   },
-  profileName: {
+  profileName: (colors: ThemeColors) => ({
     fontSize: 28,
-    color: Colors.primary,
+    color: colors.primary,
     marginBottom: 8,
-  },
+    fontWeight: 'bold' as const,
+  }),
   profileNameTablet: {
     fontSize: 36,
   },
-  profileSubtitle: {
+  profileSubtitle: (colors: ThemeColors) => ({
     fontSize: 16,
-    color: Colors.textLight,
-  },
+    color: colors.textLight,
+  }),
   profileSubtitleTablet: {
     fontSize: 18,
   },
-  section: {
-    backgroundColor: Colors.white,
+  section: (colors: ThemeColors) => ({
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
-  },
+  }),
   sectionTablet: {
     padding: 28,
     borderRadius: 20,
     marginBottom: 20,
   },
-  sectionTitle: {
+  sectionTitle: (colors: ThemeColors) => ({
     fontSize: 20,
-    color: Colors.primary,
+    color: colors.primary,
     marginBottom: 8,
-  },
+    fontWeight: 'bold' as const,
+  }),
   sectionTitleTablet: {
     fontSize: 24,
     marginBottom: 12,
   },
-  sectionDescription: {
+  sectionDescription: (colors: ThemeColors) => ({
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 20,
-  },
+  }),
   sectionDescriptionTablet: {
     fontSize: 16,
     marginBottom: 24,
   },
+  themeToggle: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: colors.neutralMedium,
+  }),
+  themeToggleTablet: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  themeToggleText: (colors: ThemeColors) => ({
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.text,
+  }),
   roleContainer: {
     gap: 12,
   },
-  roleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  roleButton: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
-  },
+    borderColor: colors.neutralMedium,
+  }),
   roleButtonTablet: {
     padding: 20,
     borderRadius: 16,
   },
-  roleButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  roleButtonText: {
+  roleButtonActive: (colors: ThemeColors) => ({
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  }),
+  roleButtonText: (colors: ThemeColors) => ({
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
+    fontWeight: '600' as const,
+    color: colors.primary,
+  }),
   roleButtonTextTablet: {
     fontSize: 18,
   },
   roleButtonTextActive: {
-    color: Colors.white,
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontWeight: '700' as const,
   },
   infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     paddingVertical: 12,
   },
   infoContent: {
     flex: 1,
     marginLeft: 12,
   },
-  infoLabel: {
+  infoLabel: (colors: ThemeColors) => ({
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 4,
-  },
+  }),
   infoLabelTablet: {
     fontSize: 16,
   },
-  infoValue: {
+  infoValue: (colors: ThemeColors) => ({
     fontSize: 16,
-    color: Colors.text,
-    fontWeight: '600',
-  },
+    color: colors.text,
+    fontWeight: '600' as const,
+  }),
   infoValueTablet: {
     fontSize: 18,
   },
-});
+};

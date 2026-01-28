@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Colors, baseStyles } from '../../constants/styles';
+import { useTheme } from '../../contexts/ThemeContext';
 import { getAllAthletes, getEffectiveRank, initializeAthletes } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 
@@ -217,6 +218,7 @@ function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Workout
 }
 
 export default function Spreadsheet({ workoutType, isTablet, isEditMode = false }: SpreadsheetProps) {
+  const { colors } = useTheme();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
@@ -726,12 +728,13 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
   return (
     <View style={[
       styles.spreadsheetContainer,
-      !isTablet && styles.spreadsheetContainerMobile
+      !isTablet && styles.spreadsheetContainerMobile,
+      { backgroundColor: colors.neutralBackground }
     ]}>
       {/* Filters */}
       <View style={[styles.filtersContainer, isTablet && styles.filtersContainerTablet]}>
         <View style={[styles.filterGroup, isTablet && styles.filterGroupTablet]}>
-          <Text style={[baseStyles.text, styles.filterLabel]}>Rank:</Text>
+          <Text style={[styles.filterLabel, { color: colors.text }]}>Rank:</Text>
           {(['rookie', 'veteran', 'varsity'] as const).map(rank => (
             <TouchableOpacity
               key={rank}
@@ -753,7 +756,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
         </View>
 
         <View style={[styles.filterGroup, isTablet && styles.filterGroupTablet]}>
-          <Text style={[baseStyles.text, styles.filterLabel]}>Gender:</Text>
+          <Text style={[styles.filterLabel, { color: colors.text }]}>Gender:</Text>
           {(['male', 'female'] as const).map(gender => (
             <TouchableOpacity
               key={gender}
@@ -779,7 +782,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
       {!selectedRank ? (
         <View style={[styles.tableWrapper, styles.emptyStateContainer]}>
           <View style={[styles.table, isTablet && styles.tableTablet, styles.emptyStateTable]}>
-            <Text style={[baseStyles.text, styles.emptyStateText, isTablet && styles.emptyStateTextTablet]}>
+            <Text style={[styles.emptyStateText, isTablet && styles.emptyStateTextTablet, { color: colors.text }]}>
               Please select a rank to view the workout spreadsheet
             </Text>
           </View>
@@ -866,7 +869,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                             <Ionicons 
                               name="reorder-three-outline" 
                               size={isTablet ? 20 : 18} 
-                              color={Colors.neutralMedium} 
+                              color={colors.neutralMedium} 
                               style={styles.dragHandle}
                             />
                           )}
@@ -977,7 +980,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                         style={[styles.addColumnButton, isTablet && styles.addColumnButtonTablet]}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={Colors.white} />
+                        <Ionicons name="add-circle" size={isTablet ? 28 : 24} color={colors.white} />
                         <Text style={[styles.addColumnButtonText, isTablet && styles.addColumnButtonTextTablet]}>
                           Add
                         </Text>
@@ -1141,7 +1144,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                                   <Text style={[styles.dropdownButtonText, isTablet && styles.dropdownButtonTextTablet]}>
                                     {formatTimeDifference(getTimeDifferenceValue(colIndex))}
                                   </Text>
-                                  <Ionicons name="chevron-down" size={isTablet ? 16 : 14} color={Colors.text} />
+                                  <Ionicons name="chevron-down" size={isTablet ? 16 : 14} color={colors.text} />
                                 </TouchableOpacity>
                               ) : (
                                 // No percentage and no recordTime - leave blank (reps shown in header only)
@@ -1229,7 +1232,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                 onPress={() => setOpenDropdown(null)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={isTablet ? 24 : 20} color={Colors.text} />
+                <Ionicons name="close" size={isTablet ? 24 : 20} color={colors.text} />
               </TouchableOpacity>
             </View>
             <ScrollView
@@ -1266,7 +1269,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                       {option.label}
                     </Text>
                     {isSelected && (
-                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={Colors.secondary} />
+                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={colors.secondary} />
                     )}
                   </TouchableOpacity>
                 );
@@ -1311,7 +1314,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                 }}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={isTablet ? 24 : 20} color={Colors.text} />
+                <Ionicons name="close" size={isTablet ? 24 : 20} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -1331,7 +1334,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                   value={newColumnName}
                   onChangeText={setNewColumnName}
                   placeholder="Enter column name"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                 />
               </View>
 
@@ -1345,7 +1348,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                   value={newColumnDistance}
                   onChangeText={setNewColumnDistance}
                   placeholder="Enter distance in meters"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -1360,7 +1363,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                   value={newColumnReps}
                   onChangeText={setNewColumnReps}
                   placeholder="Enter number of reps"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -1375,7 +1378,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                   value={newColumnPercentage}
                   onChangeText={setNewColumnPercentage}
                   placeholder="Enter percentage (e.g., 80 for 80%)"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -1390,7 +1393,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                   value={newColumnTime}
                   onChangeText={setNewColumnTime}
                   placeholder="Enter time in seconds"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                   keyboardType="numeric"
                 />
               </View>
@@ -1404,7 +1407,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                 >
                   <View style={[styles.checkbox, newColumnRecordTime && styles.checkboxChecked]}>
                     {newColumnRecordTime && (
-                      <Ionicons name="checkmark" size={isTablet ? 20 : 18} color={Colors.white} />
+                      <Ionicons name="checkmark" size={isTablet ? 20 : 18} color={colors.white} />
                     )}
                   </View>
                   <Text style={[baseStyles.text, styles.checkboxLabel, isTablet && styles.checkboxLabelTablet]}>
@@ -1417,7 +1420,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
               {editingColumnIndex === null ? (
                 <View style={styles.modalInputGroup}>
                   <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
-                    Select Rank(s) <Text style={{ color: Colors.error }}>*</Text>
+                    Select Rank(s) <Text style={{ color: colors.error }}>*</Text>
                   </Text>
                   <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet, { marginBottom: 12, fontSize: 12 }]}>
                     Select at least one rank. Column will be added to the end of each selected rank's columns.
@@ -1434,7 +1437,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
                     >
                       <View style={[styles.checkbox, selectedRanksForColumn[rank] && styles.checkboxChecked]}>
                         {selectedRanksForColumn[rank] && (
-                          <Ionicons name="checkmark" size={isTablet ? 20 : 18} color={Colors.white} />
+                          <Ionicons name="checkmark" size={isTablet ? 20 : 18} color={colors.white} />
                         )}
                       </View>
                       <Text style={[baseStyles.text, styles.checkboxLabel, isTablet && styles.checkboxLabelTablet]}>
@@ -1460,14 +1463,14 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false 
               {/* Recovery Time Input - Required */}
               <View style={styles.modalInputGroup}>
                 <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
-                  Recovery Time <Text style={{ color: Colors.error }}>*</Text>
+                  Recovery Time <Text style={{ color: colors.error }}>*</Text>
                 </Text>
                 <TextInput
                   style={[styles.modalInput, isTablet && styles.modalInputTablet]}
                   value={newColumnRecoveryTime}
                   onChangeText={setNewColumnRecoveryTime}
                   placeholder="MM:SS (e.g., 2:00 or 2:15)"
-                  placeholderTextColor={Colors.neutralMedium}
+                  placeholderTextColor={colors.neutralMedium}
                 />
                 <Text style={[baseStyles.text, styles.modalHint, isTablet && styles.modalHintTablet, { marginTop: 4, fontSize: 12 }]}>
                   Required. Enter recovery time in MM:SS format.

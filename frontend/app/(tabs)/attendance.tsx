@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { Colors, baseStyles } from '../../constants/styles';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import type { ThemeColors } from '../../constants/themes';
+import { useTheme } from '../../contexts/ThemeContext';
 import { addAthlete, clearAllStorage, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 import { normalizeDate } from '../../utils/date';
@@ -10,7 +11,9 @@ import { normalizeDate } from '../../utils/date';
 export default function AttendanceScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
   const isTablet = width >= 768;
+  const s = getStyles(colors);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [isRemoveMode, setIsRemoveMode] = useState(false);
   const [isAddMode, setIsAddMode] = useState(false);
@@ -226,54 +229,54 @@ export default function AttendanceScreen() {
 
   if (isLoading) {
     return (
-      <View style={[baseStyles.container, styles.container]}>
-        <Text style={[baseStyles.text, styles.loadingText]}>Loading...</Text>
+      <View style={s.container}>
+        <Text style={s.loadingText}>Loading...</Text>
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView 
-      style={[baseStyles.container, styles.container]}
+      style={s.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <ScrollView 
         ref={scrollViewRef}
-        style={styles.scrollView}
+        style={s.scrollView}
         contentContainerStyle={[
-          styles.contentContainer,
-          isTablet && styles.contentContainerTablet
+          s.contentContainer,
+          isTablet && s.contentContainerTablet
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={true}
       >
-        <View style={[styles.header, isTablet && styles.headerTablet]}>
-          <Text style={[baseStyles.heading, styles.title, isTablet && styles.titleTablet]}>
+        <View style={[s.header, isTablet && s.headerTablet]}>
+          <Text style={[s.title, isTablet && s.titleTablet]}>
             Attendance
           </Text>
-          <Text style={[baseStyles.text, styles.subtitle, isTablet && styles.subtitleTablet]}>
+          <Text style={[s.subtitle, isTablet && s.subtitleTablet]}>
             Tap a name to check in
           </Text>
         </View>
 
         {/* Gender Filters */}
-        <View style={[styles.filtersContainer, isTablet && styles.filtersContainerTablet]}>
-          <View style={[styles.filterGroup, isTablet && styles.filterGroupTablet]}>
-            <Text style={[baseStyles.text, styles.filterLabel]}>Gender:</Text>
+        <View style={[s.filtersContainer, isTablet && s.filtersContainerTablet]}>
+          <View style={[s.filterGroup, isTablet && s.filterGroupTablet]}>
+            <Text style={s.filterLabel}>Gender:</Text>
             {(['male', 'female'] as const).map(gender => (
               <TouchableOpacity
                 key={gender}
                 onPress={() => setSelectedGender(selectedGender === gender ? null : gender)}
                 style={[
-                  styles.filterButton,
-                  selectedGender === gender && styles.filterButtonActive,
-                  isTablet && styles.filterButtonTablet
+                  s.filterButton,
+                  selectedGender === gender && s.filterButtonActive,
+                  isTablet && s.filterButtonTablet
                 ]}
               >
                 <Text style={[
-                  styles.filterButtonText,
-                  selectedGender === gender && styles.filterButtonTextActive
+                  s.filterButtonText,
+                  selectedGender === gender && s.filterButtonTextActive
                 ]}>
                   {gender.charAt(0).toUpperCase() + gender.slice(1)}
                 </Text>
@@ -282,14 +285,14 @@ export default function AttendanceScreen() {
           </View>
           
           {/* Attendance Counters */}
-          <View style={[styles.countersContainer, isTablet && styles.countersContainerTablet]}>
-            <View style={[styles.counterBadge, styles.counterBadgePresent, isTablet && styles.counterBadgeTablet]}>
-              <Text style={[styles.counterText, isTablet && styles.counterTextTablet]}>
+          <View style={[s.countersContainer, isTablet && s.countersContainerTablet]}>
+            <View style={[s.counterBadge, s.counterBadgePresent, isTablet && s.counterBadgeTablet]}>
+              <Text style={[s.counterText, isTablet && s.counterTextTablet]}>
                 Here: {attendanceCounts.present}
               </Text>
             </View>
-            <View style={[styles.counterBadge, styles.counterBadgeAbsent, isTablet && styles.counterBadgeTablet]}>
-              <Text style={[styles.counterText, isTablet && styles.counterTextTablet]}>
+            <View style={[s.counterBadge, s.counterBadgeAbsent, isTablet && s.counterBadgeTablet]}>
+              <Text style={[s.counterText, isTablet && s.counterTextTablet]}>
                 Absent: {attendanceCounts.absent}
               </Text>
             </View>
@@ -297,13 +300,13 @@ export default function AttendanceScreen() {
         </View>
 
         {/* Athletes List */}
-        <View style={[styles.card, isTablet && styles.cardTablet]}>
-          <Text style={[baseStyles.text, styles.cardTitle, isTablet && styles.cardTitleTablet]}>
+        <View style={[s.card, isTablet && s.cardTablet]}>
+          <Text style={[s.cardTitle, isTablet && s.cardTitleTablet]}>
             Athletes ({sortedAthletes.length})
           </Text>
 
           {sortedAthletes.length === 0 ? (
-            <Text style={[baseStyles.text, styles.emptyText, isTablet && styles.emptyTextTablet]}>
+            <Text style={[s.emptyText, isTablet && s.emptyTextTablet]}>
               No athletes yet. Add your first athlete below.
             </Text>
           ) : (
@@ -312,35 +315,35 @@ export default function AttendanceScreen() {
                 <TouchableOpacity
                   key={athlete.id}
                   onPress={() => handleAthletePress(athlete.id)}
-                  style={[styles.athleteRow, isTablet && styles.athleteRowTablet]}
+                  style={[s.athleteRow, isTablet && s.athleteRowTablet]}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.athleteNameContainer}>
+                  <View style={s.athleteNameContainer}>
                     {isRemoveMode && (
                       <TouchableOpacity
                         onPress={() => handleRemoveAthlete(athlete.id, getAthleteName(athlete))}
-                        style={styles.removeIconButton}
+                        style={s.removeIconButton}
                       >
-                        <Ionicons name="close-circle" size={isTablet ? 28 : 24} color="#EF4444" />
+                        <Ionicons name="close-circle" size={isTablet ? 28 : 24} color={colors.error} />
                       </TouchableOpacity>
                     )}
-                    <Text style={[baseStyles.text, styles.athleteName, isTablet && styles.athleteNameTablet]}>
+                    <Text style={[s.athleteName, isTablet && s.athleteNameTablet]}>
                       {getAthleteName(athlete)}
                     </Text>
                   </View>
                   {!isRemoveMode && (
-                    <View style={styles.iconsContainer}>
+                    <View style={s.iconsContainer}>
                       {isAthleteCheckedIn(athlete.id) && (
-                        <View style={styles.checkmarkContainer}>
+                        <View style={s.checkmarkContainer}>
                           <Ionicons 
                             name="checkmark-circle" 
                             size={isTablet ? 28 : 24} 
-                            color={Colors.secondary} 
-                            style={styles.checkmarkIcon}
+                            color={colors.secondary} 
+                            style={s.checkmarkIcon}
                           />
                         </View>
                       )}
-                      <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={Colors.textLight} />
+                      <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textLight} />
                     </View>
                   )}
                 </TouchableOpacity>
@@ -349,29 +352,29 @@ export default function AttendanceScreen() {
           )}
 
           {/* Add/Remove Buttons at Bottom */}
-          <View style={[styles.athletesFooter, isTablet && styles.athletesFooterTablet]}>
+          <View style={[s.athletesFooter, isTablet && s.athletesFooterTablet]}>
             {!isAddMode && !isRemoveMode && (
-              <View style={styles.athletesActions}>
+              <View style={s.athletesActions}>
                 <TouchableOpacity
                   onPress={() => setIsAddMode(true)}
-                  style={[styles.actionButton, styles.addButton, isTablet && styles.actionButtonTablet]}
+                  style={[s.actionButton, s.addButton, isTablet && s.actionButtonTablet]}
                 >
-                  <Ionicons name="add" size={isTablet ? 24 : 20} color={Colors.white} />
-                  <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Add</Text>
+                  <Ionicons name="add" size={isTablet ? 24 : 20} color={colors.white} />
+                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Add</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setIsRemoveMode(true)}
-                  style={[styles.actionButton, styles.removeButton, isTablet && styles.actionButtonTablet]}
+                  style={[s.actionButton, s.removeButton, isTablet && s.actionButtonTablet]}
                 >
-                  <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={Colors.white} />
-                  <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Remove</Text>
+                  <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
+                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Remove</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleResetStorage}
-                  style={[styles.actionButton, styles.resetButton, isTablet && styles.actionButtonTablet]}
+                  style={[s.actionButton, s.resetButton, isTablet && s.actionButtonTablet]}
                 >
-                  <Ionicons name="refresh" size={isTablet ? 24 : 20} color={Colors.white} />
-                  <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Reset</Text>
+                  <Ionicons name="refresh" size={isTablet ? 24 : 20} color={colors.white} />
+                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Reset</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -388,9 +391,9 @@ export default function AttendanceScreen() {
                   setShowRankDropdown(false);
                   setShowGenderDropdown(false);
                 }}
-                style={[styles.actionButton, styles.cancelButton, isTablet && styles.actionButtonTablet]}
+                style={[s.actionButton, s.cancelButton, isTablet && s.actionButtonTablet]}
               >
-                <Text style={[styles.actionButtonText, isTablet && styles.actionButtonTextTablet]}>Cancel</Text>
+                <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Cancel</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -399,23 +402,23 @@ export default function AttendanceScreen() {
           {isAddMode && (
             <View 
               ref={inputContainerRef}
-              style={[styles.addAthleteContainer, isTablet && styles.addAthleteContainerTablet]}
+              style={[s.addAthleteContainer, isTablet && s.addAthleteContainerTablet]}
             >
-              <View style={styles.inputsColumn}>
-                <View style={styles.nameInputsRow}>
+              <View style={s.inputsColumn}>
+                <View style={s.nameInputsRow}>
                   <TextInput
-                    style={[styles.nameInput, styles.firstNameInput, isTablet && styles.nameInputTablet]}
+                    style={[s.nameInput, s.firstNameInput, isTablet && s.nameInputTablet]}
                     placeholder="First name *"
-                    placeholderTextColor={Colors.text}
+                    placeholderTextColor={colors.textMuted}
                     value={newAthleteFirstName}
                     onChangeText={setNewAthleteFirstName}
                     onFocus={handleInputFocus}
                     autoFocus
                   />
                   <TextInput
-                    style={[styles.nameInput, styles.lastNameInput, isTablet && styles.nameInputTablet]}
+                    style={[s.nameInput, s.lastNameInput, isTablet && s.nameInputTablet]}
                     placeholder="Last name *"
-                    placeholderTextColor={Colors.text}
+                    placeholderTextColor={colors.textMuted}
                     value={newAthleteLastName}
                     onChangeText={setNewAthleteLastName}
                     onFocus={handleInputFocus}
@@ -423,37 +426,37 @@ export default function AttendanceScreen() {
                 </View>
                 
                 <TouchableOpacity
-                  style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
+                  style={[s.dropdownButton, isTablet && s.dropdownButtonTablet]}
                   onPress={() => setShowGenderDropdown(true)}
                 >
                   <Text style={[
-                    styles.dropdownButtonText,
-                    !newAthleteGender && styles.dropdownButtonTextPlaceholder,
-                    isTablet && styles.dropdownButtonTextTablet
+                    s.dropdownButtonText,
+                    !newAthleteGender && s.dropdownButtonTextPlaceholder,
+                    isTablet && s.dropdownButtonTextTablet
                   ]}>
                     {newAthleteGender ? newAthleteGender.charAt(0).toUpperCase() + newAthleteGender.slice(1) : 'Gender *'}
                   </Text>
-                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={Colors.text} />
+                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={colors.text} />
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={[styles.dropdownButton, isTablet && styles.dropdownButtonTablet]}
+                  style={[s.dropdownButton, isTablet && s.dropdownButtonTablet]}
                   onPress={() => setShowRankDropdown(true)}
                 >
                   <Text style={[
-                    styles.dropdownButtonText,
-                    !newAthleteRank && styles.dropdownButtonTextPlaceholder,
-                    isTablet && styles.dropdownButtonTextTablet
+                    s.dropdownButtonText,
+                    !newAthleteRank && s.dropdownButtonTextPlaceholder,
+                    isTablet && s.dropdownButtonTextTablet
                   ]}>
                     {newAthleteRank ? newAthleteRank.charAt(0).toUpperCase() + newAthleteRank.slice(1).replace('/', '/') : 'Rank *'}
                   </Text>
-                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={Colors.text} />
+                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={colors.text} />
                 </TouchableOpacity>
                 
                 <TextInput
-                  style={[styles.nameInput, styles.goalInput, isTablet && styles.nameInputTablet]}
+                  style={[s.nameInput, s.goalInput, isTablet && s.nameInputTablet]}
                   placeholder="Goal 1600m (e.g., 6:03) *"
-                  placeholderTextColor={Colors.text}
+                  placeholderTextColor={colors.textMuted}
                   value={newAthleteGoal1600m}
                   onChangeText={setNewAthleteGoal1600m}
                   onFocus={handleInputFocus}
@@ -462,9 +465,9 @@ export default function AttendanceScreen() {
               
               <TouchableOpacity
                 onPress={handleAddAthlete}
-                style={[styles.submitButton, isTablet && styles.submitButtonTablet]}
+                style={[s.submitButton, isTablet && s.submitButtonTablet]}
               >
-                <Ionicons name="checkmark" size={isTablet ? 28 : 24} color={Colors.white} />
+                <Ionicons name="checkmark" size={isTablet ? 28 : 24} color={colors.white} />
               </TouchableOpacity>
             </View>
           )}
@@ -477,21 +480,21 @@ export default function AttendanceScreen() {
             onRequestClose={() => setShowGenderDropdown(false)}
           >
             <TouchableOpacity
-              style={styles.modalOverlay}
+              style={s.modalOverlay}
               activeOpacity={1}
               onPress={() => setShowGenderDropdown(false)}
             >
-              <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
-                <Text style={[baseStyles.text, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+              <View style={[s.modalContent, isTablet && s.modalContentTablet]}>
+                <Text style={[s.modalTitle, isTablet && s.modalTitleTablet]}>
                   Select Gender
                 </Text>
                 {(['male', 'female'] as const).map((gender) => (
                   <TouchableOpacity
                     key={gender}
                     style={[
-                      styles.modalOption,
-                      newAthleteGender === gender && styles.modalOptionSelected,
-                      isTablet && styles.modalOptionTablet
+                      s.modalOption,
+                      newAthleteGender === gender && s.modalOptionSelected,
+                      isTablet && s.modalOptionTablet
                     ]}
                     onPress={() => {
                       setNewAthleteGender(gender);
@@ -499,14 +502,14 @@ export default function AttendanceScreen() {
                     }}
                   >
                     <Text style={[
-                      styles.modalOptionText,
-                      newAthleteGender === gender && styles.modalOptionTextSelected,
-                      isTablet && styles.modalOptionTextTablet
+                      s.modalOptionText,
+                      newAthleteGender === gender && s.modalOptionTextSelected,
+                      isTablet && s.modalOptionTextTablet
                     ]}>
                       {gender.charAt(0).toUpperCase() + gender.slice(1)}
                     </Text>
                     {newAthleteGender === gender && (
-                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={Colors.secondary} />
+                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={colors.secondary} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -522,21 +525,21 @@ export default function AttendanceScreen() {
             onRequestClose={() => setShowRankDropdown(false)}
           >
             <TouchableOpacity
-              style={styles.modalOverlay}
+              style={s.modalOverlay}
               activeOpacity={1}
               onPress={() => setShowRankDropdown(false)}
             >
-              <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
-                <Text style={[baseStyles.text, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+              <View style={[s.modalContent, isTablet && s.modalContentTablet]}>
+                <Text style={[s.modalTitle, isTablet && s.modalTitleTablet]}>
                   Select Rank
                 </Text>
                 {(['rookie', 'veteran', 'varsity', 'veteran/varsity'] as const).map((rank) => (
                   <TouchableOpacity
                     key={rank}
                     style={[
-                      styles.modalOption,
-                      newAthleteRank === rank && styles.modalOptionSelected,
-                      isTablet && styles.modalOptionTablet
+                      s.modalOption,
+                      newAthleteRank === rank && s.modalOptionSelected,
+                      isTablet && s.modalOptionTablet
                     ]}
                     onPress={() => {
                       setNewAthleteRank(rank);
@@ -544,14 +547,14 @@ export default function AttendanceScreen() {
                     }}
                   >
                     <Text style={[
-                      styles.modalOptionText,
-                      newAthleteRank === rank && styles.modalOptionTextSelected,
-                      isTablet && styles.modalOptionTextTablet
+                      s.modalOptionText,
+                      newAthleteRank === rank && s.modalOptionTextSelected,
+                      isTablet && s.modalOptionTextTablet
                     ]}>
                       {rank.charAt(0).toUpperCase() + rank.slice(1).replace('/', '/')}
                     </Text>
                     {newAthleteRank === rank && (
-                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={Colors.secondary} />
+                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={colors.secondary} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -564,503 +567,506 @@ export default function AttendanceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 24,
-  },
-  contentContainerTablet: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-    width: '100%',
-    paddingHorizontal: 48,
-    paddingBottom: 32,
-  },
-  header: {
-    marginBottom: 28,
-    paddingTop: 8,
-  },
-  headerTablet: {
-    marginBottom: 36,
-    paddingTop: 12,
-  },
-  title: {
-    fontSize: 36,
-    marginBottom: 10,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    color: Colors.primary,
-  },
-  titleTablet: {
-    fontSize: 52,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: Colors.textLight,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  subtitleTablet: {
-    fontSize: 20,
-  },
-  loadingText: {
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 50,
-    color: Colors.textLight,
-  },
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: Colors.neutralLight,
-  },
-  cardTablet: {
-    padding: 40,
-    borderRadius: 24,
-    marginBottom: 24,
-  },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 20,
-    color: Colors.text,
-    letterSpacing: -0.3,
-  },
-  cardTitleTablet: {
-    fontSize: 28,
-    marginBottom: 24,
-  },
-  athleteRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 4,
-    marginVertical: 4,
-    borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  athleteRowTablet: {
-    paddingVertical: 22,
-    paddingHorizontal: 8,
-    borderRadius: 16,
-  },
-  athleteNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 14,
-  },
-  athleteName: {
-    fontSize: 18,
-    fontWeight: '600',
-    flex: 1,
-    color: Colors.text,
-    letterSpacing: -0.2,
-  },
-  athleteNameTablet: {
-    fontSize: 22,
-  },
-  removeIconButton: {
-    padding: 4,
-  },
-  iconsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  checkmarkContainer: {
-    backgroundColor: Colors.secondaryLight + '20',
-    borderRadius: 12,
-    padding: 2,
-  },
-  checkmarkIcon: {
-    marginRight: 0,
-  },
-  athletesFooter: {
-    marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 2,
-    borderTopColor: Colors.neutralMedium,
-  },
-  athletesFooterTablet: {
-    marginTop: 28,
-    paddingTop: 24,
-  },
-  athletesActions: {
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    minWidth: 110,
-    justifyContent: 'center',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  actionButtonTablet: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    minWidth: 130,
-    gap: 10,
-    borderRadius: 14,
-  },
-  addButton: {
-    backgroundColor: Colors.secondary,
-    shadowColor: Colors.secondary,
-  },
-  removeButton: {
-    backgroundColor: Colors.error,
-    shadowColor: Colors.error,
-  },
-  resetButton: {
-    backgroundColor: Colors.accent,
-    shadowColor: Colors.accent,
-  },
-  cancelButton: {
-    backgroundColor: Colors.textLight,
-    shadowColor: Colors.textLight,
-  },
-  actionButtonText: {
-    color: Colors.white,
-    fontWeight: '700',
-    fontSize: 15,
-    letterSpacing: 0.3,
-  },
-  actionButtonTextTablet: {
-    fontSize: 17,
-  },
-  addAthleteContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-    alignItems: 'flex-start',
-    backgroundColor: Colors.neutralBackground,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: Colors.secondaryLight,
-    borderStyle: 'dashed',
-  },
-  addAthleteContainerTablet: {
-    gap: 16,
-    marginTop: 20,
-    padding: 24,
-    borderRadius: 20,
-  },
-  inputsColumn: {
-    flex: 1,
-    gap: 12,
-  },
-  nameInputsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  nameInput: {
-    flex: 1,
-    borderWidth: 2,
-    borderColor: Colors.neutralMedium,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: Colors.text,
-    backgroundColor: Colors.white,
-    fontWeight: '500',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  firstNameInput: {
-    flex: 1,
-  },
-  lastNameInput: {
-    flex: 1,
-  },
-  nameInputTablet: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    fontSize: 18,
-    borderRadius: 14,
-  },
-  submitButton: {
-    backgroundColor: Colors.secondary,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  submitButtonTablet: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-  emptyText: {
-    fontSize: 17,
-    color: Colors.textLight,
-    textAlign: 'center',
-    paddingVertical: 32,
-    fontWeight: '500',
-    lineHeight: 24,
-  },
-  emptyTextTablet: {
-    fontSize: 21,
-    paddingVertical: 40,
-    lineHeight: 30,
-  },
-  dropdownButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.neutralMedium,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: Colors.white,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  dropdownButtonTablet: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 14,
-  },
-  dropdownButtonText: {
-    fontSize: 16,
-    color: Colors.text,
-    fontWeight: '600',
-  },
-  dropdownButtonTextPlaceholder: {
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
-  dropdownButtonTextTablet: {
-    fontSize: 18,
-  },
-  goalInput: {
-    width: '100%',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: Colors.white,
-    borderRadius: 24,
-    padding: 24,
-    width: '85%',
-    maxWidth: 420,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
-    borderWidth: 2,
-    borderColor: Colors.neutralLight,
-  },
-  modalContentTablet: {
-    padding: 40,
-    borderRadius: 28,
-    maxWidth: 540,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: Colors.primary,
-    letterSpacing: -0.3,
-  },
-  modalTitleTablet: {
-    fontSize: 28,
-    marginBottom: 24,
-  },
-  modalOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    marginBottom: 10,
-    backgroundColor: Colors.neutralBackground,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  modalOptionSelected: {
-    backgroundColor: Colors.secondaryLight + '30',
-    borderColor: Colors.secondary,
-  },
-  modalOptionTablet: {
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  modalOptionText: {
-    fontSize: 17,
-    color: Colors.text,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  modalOptionTextSelected: {
-    color: Colors.secondaryDark,
-    fontWeight: '700',
-  },
-  modalOptionTextTablet: {
-    fontSize: 19,
-  },
-  filtersContainer: {
-    marginBottom: 20,
-    paddingHorizontal: 0,
-  },
-  filtersContainerTablet: {
-    marginBottom: 24,
-    paddingHorizontal: 0,
-  },
-  filterGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-  },
-  filterGroupTablet: {
-    marginBottom: 16,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginRight: 10,
-    color: Colors.text,
-    letterSpacing: -0.2,
-    minWidth: 50,
-  },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.white,
-    borderWidth: 2,
-    borderColor: Colors.neutralBackground,
-    marginRight: 6,
-    marginBottom: 6,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 2,
-    minWidth: 70,
-    alignItems: 'center',
-  },
-  filterButtonTablet: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginRight: 10,
-    marginBottom: 0,
-    minWidth: 90,
-  },
-  filterButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-    shadowColor: Colors.primary,
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  filterButtonText: {
-    fontSize: 13,
-    color: Colors.text,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
-  filterButtonTextActive: {
-    color: Colors.white,
-    fontWeight: '700',
-  },
-  countersContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-    flexWrap: 'wrap',
-  },
-  countersContainerTablet: {
-    gap: 12,
-    marginTop: 12,
-  },
-  counterBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: Colors.white,
-    borderWidth: 1.5,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  counterBadgeTablet: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  counterBadgePresent: {
-    borderColor: Colors.secondary,
-    backgroundColor: Colors.secondaryLight + '15',
-  },
-  counterBadgeAbsent: {
-    borderColor: Colors.error,
-    backgroundColor: Colors.error + '15',
-  },
-  counterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.text,
-    letterSpacing: 0.1,
-  },
-  counterTextTablet: {
-    fontSize: 14,
-  },
-});
+function getStyles(colors: ThemeColors) {
+  return {
+    container: {
+      flex: 1,
+      backgroundColor: colors.neutralBackground,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    contentContainer: {
+      padding: 20,
+      paddingBottom: 24,
+    },
+    contentContainerTablet: {
+      maxWidth: 1200,
+      alignSelf: 'center' as const,
+      width: '100%',
+      paddingHorizontal: 48,
+      paddingBottom: 32,
+    },
+    header: {
+      marginBottom: 28,
+      paddingTop: 8,
+    },
+    headerTablet: {
+      marginBottom: 36,
+      paddingTop: 12,
+    },
+    title: {
+      fontSize: 36,
+      marginBottom: 10,
+      fontWeight: '800' as const,
+      letterSpacing: -0.5,
+      color: colors.primary,
+    },
+    titleTablet: {
+      fontSize: 52,
+      marginBottom: 12,
+    },
+    subtitle: {
+      fontSize: 16,
+      color: colors.textLight,
+      fontWeight: '500' as const,
+      marginTop: 4,
+    },
+    subtitleTablet: {
+      fontSize: 20,
+    },
+    loadingText: {
+      fontSize: 18,
+      textAlign: 'center' as const,
+      marginTop: 50,
+      color: colors.textLight,
+    },
+    card: {
+      backgroundColor: colors.neutralLight,
+      borderRadius: 20,
+      padding: 24,
+      marginBottom: 20,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      elevation: 8,
+      borderWidth: 1,
+      borderColor: colors.neutralMedium,
+    },
+    cardTablet: {
+      padding: 40,
+      borderRadius: 24,
+      marginBottom: 24,
+    },
+    cardTitle: {
+      fontSize: 22,
+      fontWeight: '700' as const,
+      marginBottom: 20,
+      color: colors.text,
+      letterSpacing: -0.3,
+    },
+    cardTitleTablet: {
+      fontSize: 28,
+      marginBottom: 24,
+    },
+    athleteRow: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingVertical: 18,
+      paddingHorizontal: 4,
+      marginVertical: 4,
+      borderRadius: 12,
+      backgroundColor: colors.neutralBackground,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    athleteRowTablet: {
+      paddingVertical: 22,
+      paddingHorizontal: 8,
+      borderRadius: 16,
+    },
+    athleteNameContainer: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      flex: 1,
+      gap: 14,
+    },
+    athleteName: {
+      fontSize: 18,
+      fontWeight: '600' as const,
+      flex: 1,
+      color: colors.text,
+      letterSpacing: -0.2,
+    },
+    athleteNameTablet: {
+      fontSize: 22,
+    },
+    removeIconButton: {
+      padding: 4,
+    },
+    iconsContainer: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+    },
+    checkmarkContainer: {
+      backgroundColor: colors.secondaryLight + '20',
+      borderRadius: 12,
+      padding: 2,
+    },
+    checkmarkIcon: {
+      marginRight: 0,
+    },
+    athletesFooter: {
+      marginTop: 20,
+      paddingTop: 20,
+      borderTopWidth: 2,
+      borderTopColor: colors.neutralMedium,
+    },
+    athletesFooterTablet: {
+      marginTop: 28,
+      paddingTop: 24,
+    },
+    athletesActions: {
+      flexDirection: 'row' as const,
+      gap: 12,
+      justifyContent: 'center' as const,
+      flexWrap: 'wrap' as const,
+    },
+    actionButton: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      minWidth: 110,
+      justifyContent: 'center' as const,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    actionButtonTablet: {
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      minWidth: 130,
+      gap: 10,
+      borderRadius: 14,
+    },
+    addButton: {
+      backgroundColor: colors.secondary,
+      shadowColor: colors.secondary,
+    },
+    removeButton: {
+      backgroundColor: colors.error,
+      shadowColor: colors.error,
+    },
+    resetButton: {
+      backgroundColor: colors.accent,
+      shadowColor: colors.accent,
+    },
+    cancelButton: {
+      backgroundColor: colors.textLight,
+      shadowColor: colors.textLight,
+    },
+    actionButtonText: {
+      color: colors.white,
+      fontWeight: '700' as const,
+      fontSize: 15,
+      letterSpacing: 0.3,
+    },
+    actionButtonTextTablet: {
+      fontSize: 17,
+    },
+    addAthleteContainer: {
+      flexDirection: 'row' as const,
+      gap: 12,
+      marginTop: 16,
+      alignItems: 'flex-start' as const,
+      backgroundColor: colors.neutralBackground,
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: colors.secondaryLight,
+      borderStyle: 'dashed' as const,
+    },
+    addAthleteContainerTablet: {
+      gap: 16,
+      marginTop: 20,
+      padding: 24,
+      borderRadius: 20,
+    },
+    inputsColumn: {
+      flex: 1,
+      gap: 12,
+    },
+    nameInputsRow: {
+      flexDirection: 'row' as const,
+      gap: 12,
+    },
+    nameInput: {
+      flex: 1,
+      borderWidth: 2,
+      borderColor: colors.neutralMedium,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: colors.text,
+      backgroundColor: colors.neutralLight,
+      fontWeight: '500' as const,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    firstNameInput: {
+      flex: 1,
+    },
+    lastNameInput: {
+      flex: 1,
+    },
+    nameInputTablet: {
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      fontSize: 18,
+      borderRadius: 14,
+    },
+    submitButton: {
+      backgroundColor: colors.secondary,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+      shadowColor: colors.secondary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    submitButtonTablet: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+    },
+    emptyText: {
+      fontSize: 17,
+      color: colors.textLight,
+      textAlign: 'center' as const,
+      paddingVertical: 32,
+      fontWeight: '500' as const,
+      lineHeight: 24,
+    },
+    emptyTextTablet: {
+      fontSize: 21,
+      paddingVertical: 40,
+      lineHeight: 30,
+    },
+    dropdownButton: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      borderWidth: 2,
+      borderColor: colors.neutralMedium,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: colors.neutralLight,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    dropdownButtonTablet: {
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      borderRadius: 14,
+    },
+    dropdownButtonText: {
+      fontSize: 16,
+      color: colors.text,
+      fontWeight: '600' as const,
+    },
+    dropdownButtonTextPlaceholder: {
+      color: colors.textMuted,
+      fontWeight: '500' as const,
+    },
+    dropdownButtonTextTablet: {
+      fontSize: 18,
+    },
+    goalInput: {
+      width: '100%' as const,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+    },
+    modalContent: {
+      backgroundColor: colors.neutralLight,
+      borderRadius: 24,
+      padding: 24,
+      width: '85%' as const,
+      maxWidth: 420,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 12,
+      borderWidth: 2,
+      borderColor: colors.neutralMedium,
+    },
+    modalContentTablet: {
+      padding: 40,
+      borderRadius: 28,
+      maxWidth: 540,
+    },
+    modalTitle: {
+      fontSize: 24,
+      fontWeight: '800' as const,
+      marginBottom: 20,
+      textAlign: 'center' as const,
+      color: colors.primary,
+      letterSpacing: -0.3,
+    },
+    modalTitleTablet: {
+      fontSize: 28,
+      marginBottom: 24,
+    },
+    modalOption: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderRadius: 14,
+      marginBottom: 10,
+      backgroundColor: colors.neutralBackground,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    modalOptionSelected: {
+      backgroundColor: colors.secondaryLight + '30',
+      borderColor: colors.secondary,
+    },
+    modalOptionTablet: {
+      paddingVertical: 18,
+      paddingHorizontal: 24,
+      marginBottom: 12,
+      borderRadius: 16,
+    },
+    modalOptionText: {
+      fontSize: 17,
+      color: colors.text,
+      fontWeight: '600' as const,
+      letterSpacing: -0.2,
+    },
+    modalOptionTextSelected: {
+      color: colors.secondaryDark,
+      fontWeight: '700' as const,
+    },
+    modalOptionTextTablet: {
+      fontSize: 19,
+    },
+    filtersContainer: {
+      marginBottom: 20,
+      paddingHorizontal: 0,
+    },
+    filtersContainerTablet: {
+      marginBottom: 24,
+      paddingHorizontal: 0,
+    },
+    filterGroup: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      flexWrap: 'wrap' as const,
+      marginBottom: 12,
+    },
+    filterGroupTablet: {
+      marginBottom: 16,
+    },
+    filterLabel: {
+      fontSize: 14,
+      fontWeight: '700' as const,
+      marginRight: 10,
+      color: colors.text,
+      letterSpacing: -0.2,
+      minWidth: 50,
+    },
+    filterButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.neutralLight,
+      borderWidth: 2,
+      borderColor: colors.neutralBackground,
+      marginRight: 6,
+      marginBottom: 6,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.04,
+      shadowRadius: 3,
+      elevation: 2,
+      minWidth: 70,
+      alignItems: 'center' as const,
+    },
+    filterButtonTablet: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 12,
+      marginRight: 10,
+      marginBottom: 0,
+      minWidth: 90,
+    },
+    filterButtonActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    filterButtonText: {
+      fontSize: 13,
+      color: colors.text,
+      fontWeight: '600' as const,
+      letterSpacing: 0.1,
+    },
+    filterButtonTextActive: {
+      color: colors.white,
+      fontWeight: '700' as const,
+    },
+    countersContainer: {
+      flexDirection: 'row' as const,
+      gap: 8,
+      marginTop: 8,
+      flexWrap: 'wrap' as const,
+    },
+    countersContainerTablet: {
+      gap: 12,
+      marginTop: 12,
+    },
+    counterBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: colors.neutralLight,
+      borderWidth: 1.5,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    counterBadgeTablet: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    counterBadgePresent: {
+      borderColor: colors.secondary,
+      backgroundColor: colors.secondaryLight + '15',
+    },
+    counterBadgeAbsent: {
+      borderColor: colors.error,
+      backgroundColor: colors.error + '15',
+    },
+    counterText: {
+      fontSize: 12,
+      fontWeight: '600' as const,
+      color: colors.text,
+      letterSpacing: 0.1,
+    },
+    counterTextTablet: {
+      fontSize: 14,
+    },
+  };
+}
