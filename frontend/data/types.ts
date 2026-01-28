@@ -21,9 +21,13 @@ export interface Workout {
   date: Date;
   workoutType?: 'workout' | 'longrun' | 'recovery'; // Determines which Dynamics template to use
   viewMode?: 'list' | 'spreadsheet'; // Determines which view to show for workout section
-  exercises: Exercise[]; // Dynamic exercises
+  exercises: Exercise[]; // Dynamic exercises (warm-up, workout, post-workout)
   templateSections?: string[]; // References to template section IDs (e.g., ['cooldown'])
   athleteIds: string[];
+  /** Location/address for this workout (or OYO). Stored in DB. */
+  location?: string;
+  /** Whether this workout is "On Your Own". Stored in DB. */
+  isOyo?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

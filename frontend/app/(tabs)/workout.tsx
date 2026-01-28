@@ -7,10 +7,9 @@ import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { useTheme } from '../../contexts/ThemeContext';
 import { initializeAthletes, refetchAthletes } from '../../data/athletes';
-import { getLocationForDate, initializeLocations, setLocationForDate } from '../../data/locations';
 import { Exercise, Workout } from '../../data/types';
 import { initializeUserRole, isCoach } from '../../data/user';
-import { addWorkout, getAllWorkouts, getWorkoutById, initializeWorkouts, removeExerciseFromWorkout, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
+import { addWorkout, getAllWorkouts, getLocationForDate, getWorkoutById, initializeWorkouts, refetchWorkouts, removeExerciseFromWorkout, setLocationForDate, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
 import { formatDate, getDateKey, getWorkoutStorageWindow, isToday, normalizeDate } from '../../utils/date';
 
@@ -128,7 +127,6 @@ export default function WorkoutScreen() {
       await initializeUserRole();
       await initializeAthletes();
       await initializeWorkouts();
-      await initializeLocations();
       setWorkouts(getAllWorkouts());
       setIsCoachUser(isCoach());
       
@@ -151,8 +149,9 @@ export default function WorkoutScreen() {
     useCallback(() => {
       const refresh = async () => {
         await initializeUserRole();
-        await initializeLocations();
         await refetchAthletes();
+        await refetchWorkouts();
+        setWorkouts(getAllWorkouts());
         setAthleteListRefreshTrigger(t => t + 1);
         const coachStatus = isCoach();
         setIsCoachUser(coachStatus);
@@ -376,14 +375,7 @@ export default function WorkoutScreen() {
     }
 
     try {
-      // Persist the location for the selected date:
-      // - if OYO selected, save explicit "OYO"
-      // - otherwise save the entered address (if any)
-      if (isOyoSelected) {
-        await setLocationForDate(selectedDate, 'OYO');
-      } else if (workoutLocation.trim()) {
-        await setLocationForDate(selectedDate, workoutLocation.trim());
-      }
+      const locationValue = isOyoSelected ? 'OYO' : workoutLocation.trim();
       if (editingWorkout) {
         // Check if workout type changed
         const workoutTypeChanged = editingWorkout.workoutType !== selectedWorkoutType;
@@ -462,7 +454,7 @@ export default function WorkoutScreen() {
           }
         }
         
-        // Update existing workout
+        // Update existing workout (location stored in DB)
         await updateWorkout(editingWorkout.id, {
           name: workoutName,
           description: workoutDescription || undefined,
@@ -470,9 +462,11 @@ export default function WorkoutScreen() {
           date: selectedDate,
           exercises: updatedExercises,
           athleteIds: editingWorkout.athleteIds,
+          location: locationValue || undefined,
+          isOyo: isOyoSelected,
         });
       } else {
-        // Create new workout
+        // Create new workout (location stored in DB)
         await addWorkout({
           name: workoutName,
           description: workoutDescription || undefined,
@@ -480,9 +474,14 @@ export default function WorkoutScreen() {
           date: selectedDate,
           exercises: [],
           athleteIds: [],
+          location: locationValue || undefined,
+          isOyo: isOyoSelected,
         });
       }
-      
+      // Sync location to any other workouts on the same date
+      if (locationValue) {
+        await setLocationForDate(selectedDate, locationValue);
+      }
       // Refresh workouts
       setWorkouts(getAllWorkouts());
       setWorkoutTypeModalVisible(false);

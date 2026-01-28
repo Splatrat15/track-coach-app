@@ -1,251 +1,194 @@
 /**
  * Workouts Data
- * Store and manage workout information with AsyncStorage persistence
- * Only stores workouts within a 3-week window: last week Monday to next week Sunday
+ * Store and manage workout information using Supabase
+ * Workouts and their exercises (warm-up, workout, post-workout) and location are persisted in the database.
+ * Only fetches workouts within the 3-week window: last week Monday to next week Sunday.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getWorkoutStorageWindow, normalizeDate } from '../utils/date';
+import { supabase } from '../lib/supabase';
+import { getDateKey, getWorkoutStorageWindow, normalizeDate, parseDateOnly } from '../utils/date';
 import { Exercise, Workout } from './types';
 
-const STORAGE_KEY = '@workouts';
-
-// In-memory cache of workouts
+// In-memory cache of workouts (with exercises)
 let workouts: Workout[] = [];
 let isLoaded = false;
 
-// Sample workouts data for initial setup
-// Helper function to create a normalized date (midnight local time)
-function createDate(year: number, month: number, day: number): Date {
-  const date = new Date(year, month - 1, day);
-  return normalizeDate(date);
+/**
+ * Map DB exercise row to Exercise type (snake_case -> camelCase)
+ */
+function rowToExercise(row: any): Exercise {
+  return {
+    id: row.id,
+    name: row.name,
+    section: row.section ?? undefined,
+    group: row.exercise_group ?? undefined,
+    pace: row.pace ?? undefined,
+    sets: row.sets ?? undefined,
+    reps: row.reps ?? undefined,
+    weight: row.weight ?? undefined,
+    duration: row.duration ?? undefined,
+    distance: row.distance ?? undefined,
+    notes: row.notes ?? undefined,
+  };
 }
 
-const DEFAULT_WORKOUTS: Workout[] = [
-  {
-    id: 'workout_dec_24_2025',
-    name: 'Workout',
-    date: createDate(2025, 12, 24),
-    workoutType: 'longrun',
-    exercises: [
-      {
-        id: 'workout_rookies',
-        name: 'Rookies',
-        section: 'workout',
-        group: 'rookies',
-        pace: 'recovery',
-        duration: 25, // 25 minutes
-      },
-      {
-        id: 'workout_veterans',
-        name: 'Veterans',
-        section: 'workout',
-        group: 'veterans',
-        pace: 'recovery',
-        duration: 30, // 30 minutes
-      },
-      {
-        id: 'workout_varsity',
-        name: 'Varsity',
-        section: 'workout',
-        group: 'varsity',
-        pace: 'recovery',
-        duration: 35, // 35 minutes
-      },
-      // Post-workout exercises for this specific day
-      {
-        id: 'postworkout-strides-rookies',
-        name: 'Strides',
-        section: 'postworkout',
-        group: 'rookies',
-        reps: 2,
-      },
-      {
-        id: 'postworkout-strides-veterans',
-        name: 'Strides',
-        section: 'postworkout',
-        group: 'veterans',
-        reps: 4,
-      },
-      {
-        id: 'postworkout-strides-varsity',
-        name: 'Strides',
-        section: 'postworkout',
-        group: 'varsity',
-        reps: 4,
-      },
-      {
-        id: 'postworkout-stadiums',
-        name: 'Stadiums',
-        section: 'postworkout',
-        reps: 4,
-      },
-    ],
-    athleteIds: [],
-    createdAt: createDate(2025, 12, 24),
-    updatedAt: createDate(2025, 12, 24),
-  },
-  {
-    id: 'workout_jan_1_2026',
-    name: 'Workout',
-    date: createDate(2026, 1, 1),
-    workoutType: 'longrun',
-    exercises: [
-      {
-        id: 'workout_rookies_jan_1',
-        name: 'Rookies',
-        section: 'workout',
-        group: 'rookies',
-        pace: 'recovery',
-        duration: 35, // 35 minutes
-      },
-      {
-        id: 'workout_veterans_jan_1',
-        name: 'Veterans',
-        section: 'workout',
-        group: 'veterans',
-        pace: 'recovery',
-        duration: 40, // 40 minutes
-      },
-      {
-        id: 'workout_varsity_jan_1',
-        name: 'Varsity',
-        section: 'workout',
-        group: 'varsity',
-        pace: 'recovery',
-        duration: 45, // 45 minutes
-      },
-    ],
-    athleteIds: [],
-    createdAt: createDate(2026, 1, 1),
-    updatedAt: createDate(2026, 1, 1),
-  },
-  {
-    id: 'workout_jan_2_2026',
-    name: 'Workout',
-    date: createDate(2026, 1, 2),
-    workoutType: 'workout',
-    exercises: [],
-    athleteIds: [],
-    createdAt: createDate(2026, 1, 2),
-    updatedAt: createDate(2026, 1, 2),
-  },
-];
+/**
+ * Map Exercise to DB row (camelCase -> snake_case)
+ */
+function exerciseToRow(exercise: Exercise, workoutId: string, sortOrder: number): any {
+  return {
+    id: exercise.id,
+    workout_id: workoutId,
+    name: exercise.name,
+    section: exercise.section ?? null,
+    exercise_group: exercise.group ?? null,
+    pace: exercise.pace ?? null,
+    sets: exercise.sets ?? null,
+    reps: exercise.reps ?? null,
+    weight: exercise.weight ?? null,
+    duration: exercise.duration ?? null,
+    distance: exercise.distance ?? null,
+    notes: exercise.notes ?? null,
+    sort_order: sortOrder,
+  };
+}
 
 /**
- * Load workouts from AsyncStorage
+ * Map DB workout row to Workout type (snake_case -> camelCase)
+ */
+function rowToWorkout(row: any, exercises: Exercise[]): Workout {
+  const athleteIds = row.athlete_ids;
+  const arr = Array.isArray(athleteIds) ? athleteIds : (typeof athleteIds === 'string' ? JSON.parse(athleteIds || '[]') : []);
+  const templateSections = row.template_sections;
+  const tsArr = Array.isArray(templateSections) ? templateSections : (typeof templateSections === 'string' ? JSON.parse(templateSections || '[]') : []);
+  return {
+    id: row.id,
+    name: row.name ?? 'Workout',
+    description: row.description ?? undefined,
+    date: row.date ? parseDateOnly(String(row.date).slice(0, 10)) : new Date(),
+    workoutType: row.workout_type ?? undefined,
+    viewMode: row.view_mode ?? undefined,
+    exercises,
+    templateSections: tsArr.length ? tsArr : undefined,
+    athleteIds: arr,
+    location: row.location ?? undefined,
+    isOyo: row.is_oyo ?? false,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+/**
+ * Map Workout to DB row for insert/update (camelCase -> snake_case)
+ * Does not include exercises (stored in workout_exercises).
+ */
+function workoutToRow(workout: Partial<Workout> & { date: Date }, includeId = true): any {
+  const row: any = {
+    name: workout.name ?? 'Workout',
+    description: workout.description ?? null,
+    date: workout.date instanceof Date ? workout.date.toISOString().slice(0, 10) : workout.date,
+    workout_type: workout.workoutType ?? null,
+    view_mode: workout.viewMode ?? null,
+    location: workout.location ?? null,
+    is_oyo: workout.isOyo ?? false,
+    athlete_ids: JSON.stringify(workout.athleteIds ?? []),
+    template_sections: JSON.stringify(workout.templateSections ?? []),
+    updated_at: new Date().toISOString(),
+  };
+  if (includeId && workout.id) row.id = workout.id;
+  return row;
+}
+
+/**
+ * Load workout exercises for given workout IDs from Supabase
+ */
+async function loadExercisesForWorkoutIds(workoutIds: string[]): Promise<Map<string, Exercise[]>> {
+  if (workoutIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('workout_exercises')
+    .select('*')
+    .in('workout_id', workoutIds)
+    .order('sort_order', { ascending: true });
+  if (error) {
+    console.error('Error loading workout exercises:', error);
+    return new Map();
+  }
+  const map = new Map<string, Exercise[]>();
+  for (const row of data || []) {
+    const wid = row.workout_id;
+    if (!map.has(wid)) map.set(wid, []);
+    map.get(wid)!.push(rowToExercise(row));
+  }
+  return map;
+}
+
+/**
+ * Load workouts from Supabase within the 3-week window
  */
 async function loadWorkouts(): Promise<Workout[]> {
   try {
-    const data = await AsyncStorage.getItem(STORAGE_KEY);
-    if (data) {
-      const loaded = JSON.parse(data);
-      return loaded.map((workout: any) => ({
-        ...workout,
-        date: new Date(workout.date),
-        createdAt: new Date(workout.createdAt),
-        updatedAt: new Date(workout.updatedAt),
-      }));
+    const { startDate, endDate } = getWorkoutStorageWindow();
+    const startStr = startDate.toISOString().slice(0, 10);
+    const endStr = endDate.toISOString().slice(0, 10);
+    const { data: rows, error } = await supabase
+      .from('workouts')
+      .select('*')
+      .gte('date', startStr)
+      .lte('date', endStr)
+      .order('date', { ascending: true });
+    if (error) {
+      console.error('Error loading workouts:', error);
+      return [];
     }
+    if (!rows || rows.length === 0) return [];
+    const workoutIds = rows.map((r: any) => r.id);
+    const exercisesMap = await loadExercisesForWorkoutIds(workoutIds);
+    return rows.map((row: any) => {
+      const exercises = exercisesMap.get(row.id) ?? [];
+      return rowToWorkout(row, exercises);
+    });
   } catch (error) {
     console.error('Error loading workouts:', error);
-  }
-  return [];
-}
-
-/**
- * Save workouts to AsyncStorage
- */
-async function saveWorkouts(): Promise<void> {
-  try {
-    const dataToSave = JSON.stringify(workouts);
-    await AsyncStorage.setItem(STORAGE_KEY, dataToSave);
-  } catch (error) {
-    console.error('Error saving workouts:', error);
+    return [];
   }
 }
 
 /**
- * Clean up workouts outside the 3-week window
- * Deletes all workouts before last week Monday
+ * Clean up workouts outside the 3-week window (delete from DB)
  */
 async function cleanupOldWorkouts(): Promise<void> {
   const { startDate } = getWorkoutStorageWindow();
-  const initialLength = workouts.length;
-  
-  workouts = workouts.filter(workout => {
-    const workoutDate = normalizeDate(new Date(workout.date));
-    return workoutDate >= startDate;
-  });
-  
-  if (workouts.length !== initialLength) {
-    await saveWorkouts();
-    console.log(`Cleaned up ${initialLength - workouts.length} old workout(s) outside the 3-week window`);
+  const startStr = startDate.toISOString().slice(0, 10);
+  const { error } = await supabase
+    .from('workouts')
+    .delete()
+    .lt('date', startStr);
+  if (error) {
+    console.error('Error cleaning up old workouts:', error);
   }
 }
 
 /**
- * Initialize workouts (load from storage or use default)
+ * Initialize workouts (load from Supabase)
  */
 export async function initializeWorkouts(): Promise<void> {
   if (isLoaded) return;
-  
-  const loaded = await loadWorkouts();
-  if (loaded.length > 0) {
-    workouts = loaded;
-    
-    // Ensure January 1st and January 2nd workouts exist (add if missing)
-    const jan1Date = createDate(2026, 1, 1);
-    const jan2Date = createDate(2026, 1, 2);
-    
-    const jan1Workout = workouts.find(w => {
-      const workoutDate = normalizeDate(new Date(w.date));
-      return workoutDate.getTime() === jan1Date.getTime();
-    });
-    
-    const jan2Workout = workouts.find(w => {
-      const workoutDate = normalizeDate(new Date(w.date));
-      return workoutDate.getTime() === jan2Date.getTime();
-    });
-    
-    if (!jan1Workout) {
-      const jan1Default = DEFAULT_WORKOUTS.find(w => {
-        const workoutDate = normalizeDate(new Date(w.date));
-        return workoutDate.getTime() === jan1Date.getTime();
-      });
-      if (jan1Default) {
-        workouts.push(jan1Default);
-      }
-    }
-    
-    if (!jan2Workout) {
-      const jan2Default = DEFAULT_WORKOUTS.find(w => {
-        const workoutDate = normalizeDate(new Date(w.date));
-        return workoutDate.getTime() === jan2Date.getTime();
-      });
-      if (jan2Default) {
-        workouts.push(jan2Default);
-      }
-    }
-    
-    if (!jan1Workout || !jan2Workout) {
-      await saveWorkouts();
-    }
-  } else {
-    // Use default workouts if no data exists
-    workouts = [...DEFAULT_WORKOUTS];
-    await saveWorkouts();
-  }
-  
-  // Clean up old workouts outside the 3-week window
+  workouts = await loadWorkouts();
   await cleanupOldWorkouts();
-  
+  // Reload after cleanup so cache is correct
+  workouts = await loadWorkouts();
   isLoaded = true;
 }
 
 /**
- * Reset workouts to defaults (for use with clearAllStorage)
- * This resets the in-memory state and forces reinitialization
+ * Refetch workouts from Supabase and update cache
+ */
+export async function refetchWorkouts(): Promise<void> {
+  workouts = await loadWorkouts();
+}
+
+/**
+ * Reset workouts (for use with clearAllStorage) - clears cache and reinitializes
  */
 export async function resetWorkouts(): Promise<void> {
   workouts = [];
@@ -254,29 +197,21 @@ export async function resetWorkouts(): Promise<void> {
 }
 
 /**
- * Get all workouts within the 3-week window (last week Monday to next week Sunday)
+ * Get all workouts within the 3-week window
  */
 export function getAllWorkouts(): Workout[] {
   const { startDate, endDate } = getWorkoutStorageWindow();
-  
   return workouts.filter(workout => {
-    const workoutDate = normalizeDate(new Date(workout.date));
-    return workoutDate >= startDate && workoutDate <= endDate;
+    const d = normalizeDate(new Date(workout.date));
+    return d >= startDate && d <= endDate;
   });
-}
-
-/**
- * Get all workouts (including those outside the window) - for internal use only
- */
-function getAllWorkoutsInternal(): Workout[] {
-  return workouts;
 }
 
 /**
  * Get workout by ID
  */
 export function getWorkoutById(id: string): Workout | undefined {
-  return workouts.find(workout => workout.id === id);
+  return workouts.find(w => w.id === id);
 }
 
 /**
@@ -291,100 +226,196 @@ export function getWorkoutsByAthleteId(athleteId: string): Workout[] {
  */
 export function getWorkoutsByDateRange(startDate: Date, endDate: Date): Workout[] {
   const window = getWorkoutStorageWindow();
-  const effectiveStartDate = startDate > window.startDate ? startDate : window.startDate;
-  const effectiveEndDate = endDate < window.endDate ? endDate : window.endDate;
-  
+  const effectiveStart = startDate > window.startDate ? startDate : window.startDate;
+  const effectiveEnd = endDate < window.endDate ? endDate : window.endDate;
   return workouts.filter(workout => {
-    const workoutDate = normalizeDate(new Date(workout.date));
-    return workoutDate >= effectiveStartDate && workoutDate <= effectiveEndDate;
+    const d = normalizeDate(new Date(workout.date));
+    return d >= effectiveStart && d <= effectiveEnd;
   });
 }
 
+// --- Location helpers (location is stored on each workout) ---
+
 /**
- * Check if a date is within the allowed range (last week Monday to next week Sunday)
+ * Get location for a specific date (from the first workout on that date)
+ */
+export function getLocationForDate(date: Date): string | undefined {
+  const key = getDateKey(date);
+  const w = workouts.find(w => getDateKey(new Date(w.date)) === key);
+  if (!w) return undefined;
+  if (w.isOyo) return 'OYO';
+  return w.location ?? undefined;
+}
+
+/**
+ * Set location for all workouts on a specific date
+ */
+export async function setLocationForDate(date: Date, address: string): Promise<void> {
+  const key = getDateKey(date);
+  const isOyo = /^(oyo|on your own)$/i.test(address.trim());
+  const toUpdate = workouts.filter(w => getDateKey(new Date(w.date)) === key);
+  for (const w of toUpdate) {
+    const { error } = await supabase
+      .from('workouts')
+      .update({
+        location: isOyo ? 'OYO' : address.trim(),
+        is_oyo: isOyo,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', w.id);
+    if (error) console.error('Error updating workout location:', error);
+  }
+  await refetchWorkouts();
+}
+
+/**
+ * Remove location for a specific date (clear location on all workouts that day)
+ */
+export async function removeLocationForDate(date: Date): Promise<boolean> {
+  const key = getDateKey(date);
+  const toUpdate = workouts.filter(w => getDateKey(new Date(w.date)) === key);
+  if (toUpdate.length === 0) return false;
+  for (const w of toUpdate) {
+    await supabase
+      .from('workouts')
+      .update({ location: null, is_oyo: false, updated_at: new Date().toISOString() })
+      .eq('id', w.id);
+  }
+  await refetchWorkouts();
+  return true;
+}
+
+/**
+ * Get all locations (date + address) from workouts in the 3-week window
+ */
+export function getAllLocations(): { date: Date; address: string }[] {
+  const seen = new Set<string>();
+  return getAllWorkouts()
+    .filter(w => {
+      const key = getDateKey(new Date(w.date));
+      if (seen.has(key)) return false;
+      seen.add(key);
+      const loc = w.isOyo ? 'OYO' : (w.location ?? '');
+      return !!loc;
+    })
+    .map(w => ({
+      date: new Date(w.date),
+      address: w.isOyo ? 'OYO' : (w.location ?? ''),
+    }));
+}
+
+/**
+ * Check if a date is within the allowed range
  */
 function isDateWithinAllowedRange(date: Date): boolean {
   const { startDate, endDate } = getWorkoutStorageWindow();
-  const workoutDate = normalizeDate(date);
-  return workoutDate >= startDate && workoutDate <= endDate;
+  const d = normalizeDate(date);
+  return d >= startDate && d <= endDate;
 }
 
 /**
- * Add a new workout
- * Throws an error if the workout date is beyond next week Sunday
+ * Add a new workout (and its exercises) to the database
  */
-export async function addWorkout(workout: Omit<Workout, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workout> {
+export async function addWorkout(workout: Omit<Workout, 'id' | 'createdAt' | 'updatedAt'> & { location?: string; isOyo?: boolean }): Promise<Workout> {
   await initializeWorkouts();
-  
   const workoutDate = normalizeDate(workout.date);
   const { endDate } = getWorkoutStorageWindow();
-  
-  // Prevent creating workouts beyond next week Sunday
   if (workoutDate > endDate) {
     throw new Error(`Cannot create workout beyond ${endDate.toLocaleDateString()}. The 3-week window only allows workouts up to next week Sunday.`);
   }
-  
-  const newWorkout: Workout = {
-    ...workout,
-    id: `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+  const id = `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = new Date();
+  const row = {
+    id,
+    name: workout.name ?? 'Workout',
+    description: workout.description ?? null,
+    date: workoutDate.toISOString().slice(0, 10),
+    workout_type: workout.workoutType ?? null,
+    view_mode: workout.viewMode ?? null,
+    location: workout.location ?? null,
+    is_oyo: workout.isOyo ?? false,
+    athlete_ids: workout.athleteIds ?? [],
+    template_sections: workout.templateSections ?? [],
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
   };
-  
-  workouts.push(newWorkout);
-  await saveWorkouts();
-  
-  // Clean up old workouts if needed
-  await cleanupOldWorkouts();
-  
-  return newWorkout;
+  const { error: insertError } = await supabase.from('workouts').insert(row);
+  if (insertError) {
+    console.error('Error inserting workout:', insertError);
+    throw new Error(insertError.message);
+  }
+  const exercises = workout.exercises ?? [];
+  if (exercises.length > 0) {
+    const exerciseRows = exercises.map((ex, i) => ({
+      ...exerciseToRow(ex, id, i),
+      id: ex.id || `exercise_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
+    }));
+    const { error: exError } = await supabase.from('workout_exercises').insert(exerciseRows);
+    if (exError) console.error('Error inserting workout exercises:', exError);
+  }
+  await refetchWorkouts();
+  const created = getWorkoutById(id);
+  if (!created) throw new Error('Workout created but not found in cache');
+  return created;
 }
 
 /**
- * Update a workout
+ * Update a workout and optionally replace its exercises
  */
-export async function updateWorkout(id: string, updates: Partial<Workout>): Promise<Workout | null> {
+export async function updateWorkout(id: string, updates: Partial<Workout> & { location?: string; isOyo?: boolean }): Promise<Workout | null> {
   await initializeWorkouts();
-  
-  const index = workouts.findIndex(workout => workout.id === id);
-  if (index === -1) return null;
-  
-  // If date is being updated, check if it's within allowed range
+  const existing = getWorkoutById(id);
+  if (!existing) return null;
   if (updates.date) {
     const workoutDate = normalizeDate(updates.date);
     const { endDate } = getWorkoutStorageWindow();
-    
     if (workoutDate > endDate) {
       throw new Error(`Cannot update workout date beyond ${endDate.toLocaleDateString()}. The 3-week window only allows workouts up to next week Sunday.`);
     }
   }
-  
-  workouts[index] = {
-    ...workouts[index],
-    ...updates,
-    updatedAt: new Date(),
+  const row: any = {
+    updated_at: new Date().toISOString(),
   };
-  
-  await saveWorkouts();
-  
-  // Clean up old workouts if needed
-  await cleanupOldWorkouts();
-  
-  return workouts[index];
+  if (updates.name !== undefined) row.name = updates.name;
+  if (updates.description !== undefined) row.description = updates.description;
+  if (updates.date !== undefined) row.date = normalizeDate(updates.date).toISOString().slice(0, 10);
+  if (updates.workoutType !== undefined) row.workout_type = updates.workoutType;
+  if (updates.viewMode !== undefined) row.view_mode = updates.viewMode;
+  if (updates.athleteIds !== undefined) row.athlete_ids = updates.athleteIds;
+  if (updates.templateSections !== undefined) row.template_sections = updates.templateSections;
+  if (updates.location !== undefined) row.location = updates.location;
+  if (updates.isOyo !== undefined) row.is_oyo = updates.isOyo;
+  const { error: updateError } = await supabase.from('workouts').update(row).eq('id', id);
+  if (updateError) {
+    console.error('Error updating workout:', updateError);
+    throw new Error(updateError.message);
+  }
+  if (updates.exercises !== undefined) {
+    await supabase.from('workout_exercises').delete().eq('workout_id', id);
+    const exerciseRows = updates.exercises.map((ex, i) => ({
+      ...exerciseToRow(ex, id, i),
+      id: ex.id || `exercise_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
+    }));
+    if (exerciseRows.length > 0) {
+      const { error: exError } = await supabase.from('workout_exercises').insert(exerciseRows);
+      if (exError) console.error('Error replacing workout exercises:', exError);
+    }
+  }
+  await refetchWorkouts();
+  return getWorkoutById(id) ?? null;
 }
 
 /**
- * Delete a workout
+ * Delete a workout (and its exercises via CASCADE)
  */
 export async function deleteWorkout(id: string): Promise<boolean> {
   await initializeWorkouts();
-  
-  const index = workouts.findIndex(workout => workout.id === id);
-  if (index === -1) return false;
-  
-  workouts.splice(index, 1);
-  await saveWorkouts();
-  
+  const { error } = await supabase.from('workouts').delete().eq('id', id);
+  if (error) {
+    console.error('Error deleting workout:', error);
+    return false;
+  }
+  await refetchWorkouts();
   return true;
 }
 
@@ -393,21 +424,20 @@ export async function deleteWorkout(id: string): Promise<boolean> {
  */
 export async function addExerciseToWorkout(workoutId: string, exercise: Exercise): Promise<Workout | null> {
   await initializeWorkouts();
-  
   const workout = getWorkoutById(workoutId);
   if (!workout) return null;
-  
-  const newExercise: Exercise = {
+  const newEx: Exercise = {
     ...exercise,
     id: exercise.id || `exercise_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
   };
-  
-  workout.exercises.push(newExercise);
-  workout.updatedAt = new Date();
-  
-  await saveWorkouts();
-  
-  return workout;
+  const sortOrder = workout.exercises.length;
+  const { error } = await supabase.from('workout_exercises').insert(exerciseToRow(newEx, workoutId, sortOrder));
+  if (error) {
+    console.error('Error adding exercise:', error);
+    return null;
+  }
+  await refetchWorkouts();
+  return getWorkoutById(workoutId) ?? null;
 }
 
 /**
@@ -415,16 +445,15 @@ export async function addExerciseToWorkout(workoutId: string, exercise: Exercise
  */
 export async function removeExerciseFromWorkout(workoutId: string, exerciseId: string): Promise<Workout | null> {
   await initializeWorkouts();
-  
   const workout = getWorkoutById(workoutId);
   if (!workout) return null;
-  
-  workout.exercises = workout.exercises.filter(ex => ex.id !== exerciseId);
-  workout.updatedAt = new Date();
-  
-  await saveWorkouts();
-  
-  return workout;
+  const { error } = await supabase.from('workout_exercises').delete().eq('id', exerciseId).eq('workout_id', workoutId);
+  if (error) {
+    console.error('Error removing exercise:', error);
+    return null;
+  }
+  await refetchWorkouts();
+  return getWorkoutById(workoutId) ?? null;
 }
 
 /**
@@ -432,20 +461,33 @@ export async function removeExerciseFromWorkout(workoutId: string, exerciseId: s
  */
 export async function updateExerciseInWorkout(workoutId: string, exerciseId: string, updates: Partial<Exercise>): Promise<Workout | null> {
   await initializeWorkouts();
-  
   const workout = getWorkoutById(workoutId);
   if (!workout) return null;
-  
-  const exerciseIndex = workout.exercises.findIndex(ex => ex.id === exerciseId);
-  if (exerciseIndex === -1) return null;
-  
-  workout.exercises[exerciseIndex] = {
-    ...workout.exercises[exerciseIndex],
-    ...updates,
-  };
-  workout.updatedAt = new Date();
-  
-  await saveWorkouts();
-  
-  return workout;
+  const ex = workout.exercises.find(e => e.id === exerciseId);
+  if (!ex) return null;
+  const merged = { ...ex, ...updates };
+  const idx = workout.exercises.findIndex(e => e.id === exerciseId);
+  const row = exerciseToRow(merged, workoutId, idx);
+  const { error } = await supabase
+    .from('workout_exercises')
+    .update({
+      name: row.name,
+      section: row.section,
+      exercise_group: row.exercise_group,
+      pace: row.pace,
+      sets: row.sets,
+      reps: row.reps,
+      weight: row.weight,
+      duration: row.duration,
+      distance: row.distance,
+      notes: row.notes,
+    })
+    .eq('id', exerciseId)
+    .eq('workout_id', workoutId);
+  if (error) {
+    console.error('Error updating exercise:', error);
+    return null;
+  }
+  await refetchWorkouts();
+  return getWorkoutById(workoutId) ?? null;
 }

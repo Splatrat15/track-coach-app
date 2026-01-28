@@ -14,6 +14,15 @@ export function normalizeDate(date: Date): Date {
 }
 
 /**
+ * Parse a date-only string (YYYY-MM-DD) as local midnight.
+ * Use this when loading dates from the DB so they match the selected calendar day.
+ */
+export function parseDateOnly(isoDateStr: string): Date {
+  const [y, m, d] = isoDateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
  * Get date key in YYYY-MM-DD format for consistent date comparison
  */
 export function getDateKey(date: Date): string {
