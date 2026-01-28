@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, baseStyles } from '../../../constants/styles';
@@ -11,7 +11,7 @@ import {
 } from '../../../data/athletes';
 import { addOyoSubmission, getOyoSubmissionsByDate, initializeOyoSubmissions } from '../../../data/oyoSubmissions';
 import { Athlete } from '../../../data/types';
-import { formatTimeArizona, normalizeDate } from '../../../utils/date';
+import { formatTimeArizona, getDateKey, normalizeDate } from '../../../utils/date';
 
 export default function AthleteOyoSubmissionScreen() {
   const router = useRouter();
@@ -208,11 +208,13 @@ export default function AthleteOyoSubmissionScreen() {
   const handleModalClose = async () => {
     setShowModal(false);
     await initializeOyoSubmissions();
-    router.push('/(tabs)/oyo');
+    const dateKey = getDateKey(selectedDate);
+    router.push(`/(tabs)/oyo?date=${dateKey}`);
   };
 
   const handleGoBack = () => {
-    router.push('/(tabs)/oyo');
+    const dateKey = getDateKey(selectedDate);
+    router.push(`/(tabs)/oyo?date=${dateKey}`);
   };
 
   if (isLoading || !athlete) {
