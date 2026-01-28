@@ -1,23 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, baseStyles } from '../../../constants/styles';
 import {
-  deleteAttendanceRecord,
-  findOrCreateAttendanceRecord,
-  getAthleteById,
-  getAthleteName,
-  getAttendanceRecordsByDate,
-  initializeAttendanceRecords
+    deleteAttendanceRecord,
+    findOrCreateAttendanceRecord,
+    getAthleteById,
+    getAthleteName,
+    getAttendanceRecordsByDate,
+    initializeAttendanceRecords
 } from '../../../data/athletes';
 import { Athlete } from '../../../data/types';
-import { normalizeDate, formatTimeArizona } from '../../../utils/date';
+import { formatDate, formatTimeArizona, isToday, normalizeDate } from '../../../utils/date';
 
 export default function AthleteCheckInScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, date: dateParam } = useLocalSearchParams<{ id: string; date?: string }>();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
@@ -29,8 +29,16 @@ export default function AthleteCheckInScreen() {
   const [modalMessage, setModalMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Get today's date
-  const today = normalizeDate(new Date());
+  // View date: from query param (YYYY-MM-DD) or today
+  const viewDate = useMemo(() => {
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      const d = new Date(dateParam + 'T12:00:00');
+      if (!isNaN(d.getTime())) return normalizeDate(d);
+    }
+    return normalizeDate(new Date());
+  }, [dateParam]);
+
+  const isTodayView = isToday(viewDate);
 
   useEffect(() => {
     const init = async () => {
@@ -40,40 +48,47 @@ export default function AthleteCheckInScreen() {
         const athleteData = getAthleteById(id);
         if (athleteData) {
           setAthlete(athleteData);
-          
-          // Check if already checked in today
-          const records = getAttendanceRecordsByDate(today);
-          const todayRecord = records.find(r => r.athleteId === id && r.status === 'present');
-          setIsCheckedIn(!!todayRecord);
-          setCheckInTime(todayRecord?.checkInTime || null);
+          const records = getAttendanceRecordsByDate(viewDate);
+          const record = records.find(r => r.athleteId === id && r.status === 'present');
+          setIsCheckedIn(!!record);
+          setCheckInTime(record?.checkInTime || null);
         }
       }
       setIsLoading(false);
     };
     init();
-  }, [id, today]);
+  }, [id, viewDate]);
 
   const handleCheckIn = async () => {
     if (!athlete || !id) return;
-    
+    if (!isTodayView) {
+      Alert.alert('Not allowed', 'You can only mark "Here" for today.');
+      return;
+    }
+    const now = new Date();
+    const todayNormalized = normalizeDate(now);
+    if (viewDate.getTime() !== todayNormalized.getTime()) {
+      Alert.alert('Not allowed', 'You can only mark "Here" for today.');
+      return;
+    }
     try {
-      const record = await findOrCreateAttendanceRecord(id, today, 'present');
-      // Ensure data is saved
+      const record = await findOrCreateAttendanceRecord(id, viewDate, 'present');
       await initializeAttendanceRecords();
       setModalMessage(`${athlete ? getAthleteName(athlete) : ''} - Checked In!`);
       setShowModal(true);
       setIsCheckedIn(true);
       setCheckInTime(record.checkInTime || null);
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Could not check in.';
+      Alert.alert('Check-in failed', message);
       console.error('Error checking in:', error);
     }
   };
 
   const handleUndo = async () => {
-    if (!athlete || !id) return;
-    
+    if (!athlete || !id || !isTodayView) return;
     try {
-      const records = getAttendanceRecordsByDate(today);
+      const records = getAttendanceRecordsByDate(viewDate);
       const todayRecord = records.find(r => r.athleteId === id && r.status === 'present');
       if (todayRecord) {
         await deleteAttendanceRecord(todayRecord.id);
@@ -122,34 +137,52 @@ export default function AthleteCheckInScreen() {
         <Text style={[baseStyles.heading, styles.athleteName, isTablet && styles.athleteNameTablet]}>
           {athlete ? getAthleteName(athlete) : ''}
         </Text>
+        {!isTodayView && (
+          <Text style={[baseStyles.text, styles.viewDateLabel]}>
+            {formatDate(viewDate)}
+          </Text>
+        )}
       </View>
 
-      {/* Check In or Already Checked In */}
-      {!isCheckedIn ? (
-        <View style={styles.contentContainer}>
-          <TouchableOpacity
-            onPress={handleCheckIn}
-            style={[styles.checkInButton, isTablet && styles.checkInButtonTablet]}
-          >
-            <Text style={[styles.checkInButtonText, isTablet && styles.checkInButtonTextTablet]}>
-              Here
+      {/* Check In or Already Checked In (today only) / Read-only for past dates */}
+      {isTodayView ? (
+        !isCheckedIn ? (
+          <View style={styles.contentContainer}>
+            <TouchableOpacity
+              onPress={handleCheckIn}
+              style={[styles.checkInButton, isTablet && styles.checkInButtonTablet]}
+            >
+              <Text style={[styles.checkInButtonText, isTablet && styles.checkInButtonTextTablet]}>
+                Here
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.contentContainer}>
+            <Text style={[baseStyles.text, styles.alreadyCheckedIn, isTablet && styles.alreadyCheckedInTablet]}>
+              Already Checked In!
             </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              onPress={handleUndo}
+              style={[styles.undoButton, isTablet && styles.undoButtonTablet]}
+            >
+              <Text style={[styles.undoButtonText, isTablet && styles.undoButtonTextTablet]}>
+                (Undo)
+              </Text>
+            </TouchableOpacity>
+            {checkInTime && (
+              <Text style={[baseStyles.text, styles.checkInTime, isTablet && styles.checkInTimeTablet]}>
+                Checked in at {formatTimeArizona(checkInTime)}
+              </Text>
+            )}
+          </View>
+        )
       ) : (
         <View style={styles.contentContainer}>
-          <Text style={[baseStyles.text, styles.alreadyCheckedIn, isTablet && styles.alreadyCheckedInTablet]}>
-            Already Checked In!
+          <Text style={[baseStyles.text, styles.readOnlyStatus, isTablet && styles.readOnlyStatusTablet]}>
+            {isCheckedIn ? `Was present on ${formatDate(viewDate)}` : `Was not present on ${formatDate(viewDate)}`}
           </Text>
-          <TouchableOpacity
-            onPress={handleUndo}
-            style={[styles.undoButton, isTablet && styles.undoButtonTablet]}
-          >
-            <Text style={[styles.undoButtonText, isTablet && styles.undoButtonTextTablet]}>
-              (Undo)
-            </Text>
-          </TouchableOpacity>
-          {checkInTime && (
+          {isCheckedIn && checkInTime && (
             <Text style={[baseStyles.text, styles.checkInTime, isTablet && styles.checkInTimeTablet]}>
               Checked in at {formatTimeArizona(checkInTime)}
             </Text>
@@ -220,6 +253,12 @@ const styles = StyleSheet.create({
   athleteNameTablet: {
     fontSize: 48,
   },
+  viewDateLabel: {
+    fontSize: 16,
+    color: Colors.text,
+    opacity: 0.8,
+    marginTop: 8,
+  },
   contentContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -289,6 +328,14 @@ const styles = StyleSheet.create({
   checkInTimeTablet: {
     fontSize: 20,
     marginTop: 20,
+  },
+  readOnlyStatus: {
+    fontSize: 22,
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  readOnlyStatusTablet: {
+    fontSize: 28,
   },
   modalOverlay: {
     flex: 1,

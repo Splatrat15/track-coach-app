@@ -6,7 +6,7 @@ import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { addAthlete, clearAllStorage, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
-import { normalizeDate } from '../../utils/date';
+import { formatDate, getAttendanceStorageWindow, getDateKey, isToday, normalizeDate } from '../../utils/date';
 
 export default function AttendanceScreen() {
   const router = useRouter();
@@ -15,6 +15,7 @@ export default function AttendanceScreen() {
   const isTablet = width >= 768;
   const s = getStyles(colors);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => normalizeDate(new Date()));
   const [isRemoveMode, setIsRemoveMode] = useState(false);
   const [isAddMode, setIsAddMode] = useState(false);
   const [newAthleteFirstName, setNewAthleteFirstName] = useState('');
@@ -29,38 +30,93 @@ export default function AttendanceScreen() {
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Attendance window: past 14 days through today
+  const storageWindow = useMemo(() => getAttendanceStorageWindow(), []);
+
   // Initialize data on mount
   useEffect(() => {
     const init = async () => {
       await initializeAthletes();
       await initializeAttendanceRecords();
       setAthletes(getAllAthletes());
+      const today = normalizeDate(new Date());
+      const clamped = today < storageWindow.startDate
+        ? storageWindow.startDate
+        : today > storageWindow.endDate
+          ? storageWindow.endDate
+          : today;
+      setSelectedDate(clamped);
       setIsLoading(false);
     };
     init();
-  }, []);
+  }, [storageWindow.startDate, storageWindow.endDate]);
+
+  // Clamp selectedDate to the 2-week window
+  useEffect(() => {
+    const selected = normalizeDate(selectedDate);
+    if (selected < storageWindow.startDate) {
+      setSelectedDate(storageWindow.startDate);
+    } else if (selected > storageWindow.endDate) {
+      setSelectedDate(storageWindow.endDate);
+    }
+  }, [selectedDate, storageWindow]);
 
   // Refresh attendance status when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
         await initializeAttendanceRecords();
-        // Force re-render by updating athletes state
         setAthletes([...getAllAthletes()]);
       };
       refresh();
     }, [])
   );
 
+  // Date navigation (back = earlier, forward = toward today)
+  const canGoPrevious = useMemo(() => {
+    const selected = normalizeDate(selectedDate);
+    return selected > storageWindow.startDate;
+  }, [selectedDate, storageWindow.startDate]);
 
-  // Get today's date for checking attendance
-  const today = useMemo(() => {
-    return normalizeDate(new Date());
-  }, []);
+  const canGoNext = useMemo(() => {
+    const selected = normalizeDate(selectedDate);
+    return selected < storageWindow.endDate;
+  }, [selectedDate, storageWindow.endDate]);
 
-  // Check if an athlete is checked in today
+  const goToPreviousDate = () => {
+    if (!canGoPrevious) return;
+    const prevDate = new Date(selectedDate);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const normalized = normalizeDate(prevDate);
+    if (normalized >= storageWindow.startDate) {
+      setSelectedDate(normalized);
+    }
+  };
+
+  const goToNextDate = () => {
+    if (!canGoNext) return;
+    const nextDate = new Date(selectedDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const normalized = normalizeDate(nextDate);
+    if (normalized <= storageWindow.endDate) {
+      setSelectedDate(normalized);
+    }
+  };
+
+  const goToToday = () => {
+    const today = normalizeDate(new Date());
+    if (today < storageWindow.startDate) {
+      setSelectedDate(storageWindow.startDate);
+    } else if (today > storageWindow.endDate) {
+      setSelectedDate(storageWindow.endDate);
+    } else {
+      setSelectedDate(today);
+    }
+  };
+
+  // Check if an athlete is checked in on the selected date
   const isAthleteCheckedIn = (athleteId: string): boolean => {
-    const records = getAttendanceRecordsByDate(today);
+    const records = getAttendanceRecordsByDate(selectedDate);
     return records.some(r => r.athleteId === athleteId && r.status === 'present');
   };
 
@@ -75,15 +131,15 @@ export default function AttendanceScreen() {
   // Athletes are already sorted by last name from the database
   const sortedAthletes = filteredAthletes;
 
-  // Calculate present and absent counts
+  // Calculate present and absent counts for selected date
   const attendanceCounts = useMemo(() => {
-    const records = getAttendanceRecordsByDate(today);
-    const present = sortedAthletes.filter(athlete => 
+    const records = getAttendanceRecordsByDate(selectedDate);
+    const present = sortedAthletes.filter(athlete =>
       records.some(r => r.athleteId === athlete.id && r.status === 'present')
     ).length;
     const absent = sortedAthletes.length - present;
     return { present, absent };
-  }, [sortedAthletes, today]);
+  }, [sortedAthletes, selectedDate]);
 
   // Validate time format (M:SS or MM:SS, e.g., "6:03" or "06:03")
   const validateTimeFormat = (time: string): boolean => {
@@ -205,9 +261,9 @@ export default function AttendanceScreen() {
     );
   };
 
-  // Navigate to athlete check-in screen
+  // Navigate to athlete check-in screen with selected date (YYYY-MM-DD)
   const handleAthletePress = (athleteId: string) => {
-    router.push(`/(tabs)/attendance/${athleteId}`);
+    router.push(`/(tabs)/attendance/${athleteId}?date=${getDateKey(selectedDate)}`);
   };
 
   // Scroll to input when it's focused
@@ -256,9 +312,65 @@ export default function AttendanceScreen() {
             Attendance
           </Text>
           <Text style={[s.subtitle, isTablet && s.subtitleTablet]}>
-            Tap a name to check in
+            {isToday(selectedDate) ? 'Tap a name to check in' : 'Viewing past date (read-only)'}
           </Text>
         </View>
+
+        {/* Date Navigation */}
+        <View style={[s.dateNavigation, isTablet && s.dateNavigationTablet, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium, shadowColor: colors.primary }]}>
+          <TouchableOpacity
+            onPress={goToPreviousDate}
+            disabled={!canGoPrevious}
+            style={[
+              s.arrowButton,
+              isTablet && s.arrowButtonTablet,
+              !canGoPrevious && s.arrowButtonDisabled,
+              { backgroundColor: !canGoPrevious ? colors.neutralMedium : colors.neutralBackground, borderColor: colors.neutralMedium },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={isTablet ? 32 : 24}
+              color={canGoPrevious ? colors.primary : colors.neutralMedium}
+            />
+          </TouchableOpacity>
+          <View style={s.dateDisplay}>
+            <Text style={[s.dateText, isTablet && s.dateTextTablet, { color: colors.primary }]}>
+              {formatDate(selectedDate)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={goToNextDate}
+            disabled={!canGoNext}
+            style={[
+              s.arrowButton,
+              isTablet && s.arrowButtonTablet,
+              !canGoNext && s.arrowButtonDisabled,
+              { backgroundColor: !canGoNext ? colors.neutralMedium : colors.neutralBackground, borderColor: colors.neutralMedium },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={isTablet ? 32 : 24}
+              color={canGoNext ? colors.primary : colors.neutralMedium}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Today Button - when viewing a past date */}
+        {!isToday(selectedDate) && (
+          <TouchableOpacity
+            onPress={goToToday}
+            style={[s.todayButton, isTablet && s.todayButtonTablet, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
+            activeOpacity={0.7}
+          >
+            <Text style={[s.todayButtonText, isTablet && s.todayButtonTextTablet, { color: colors.white }]}>
+              Today
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Gender Filters */}
         <View style={[s.filtersContainer, isTablet && s.filtersContainerTablet]}>
@@ -614,6 +726,81 @@ function getStyles(colors: ThemeColors) {
     },
     subtitleTablet: {
       fontSize: 20,
+    },
+    dateNavigation: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      paddingVertical: 16,
+      paddingHorizontal: 16,
+      marginBottom: 20,
+      borderRadius: 20,
+      borderWidth: 1,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    dateNavigationTablet: {
+      marginBottom: 24,
+      paddingVertical: 22,
+      paddingHorizontal: 20,
+      borderRadius: 24,
+    },
+    arrowButton: {
+      padding: 14,
+      borderRadius: 14,
+      minWidth: 48,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      borderWidth: 1,
+    },
+    arrowButtonTablet: {
+      padding: 18,
+      borderRadius: 16,
+      minWidth: 60,
+    },
+    arrowButtonDisabled: {
+      opacity: 0.4,
+    },
+    dateDisplay: {
+      flex: 1,
+      alignItems: 'center' as const,
+      marginHorizontal: 24,
+      paddingVertical: 10,
+    },
+    dateText: {
+      fontSize: 26,
+      fontWeight: '800' as const,
+      letterSpacing: -0.5,
+    },
+    dateTextTablet: {
+      fontSize: 36,
+    },
+    todayButton: {
+      alignSelf: 'center' as const,
+      paddingHorizontal: 32,
+      paddingVertical: 14,
+      borderRadius: 12,
+      marginBottom: 20,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    todayButtonTablet: {
+      paddingHorizontal: 40,
+      paddingVertical: 16,
+      borderRadius: 14,
+      marginBottom: 24,
+    },
+    todayButtonText: {
+      fontSize: 16,
+      fontWeight: '700' as const,
+      letterSpacing: 0.3,
+    },
+    todayButtonTextTablet: {
+      fontSize: 18,
     },
     loadingText: {
       fontSize: 18,

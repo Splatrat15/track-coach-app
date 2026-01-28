@@ -5,12 +5,12 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { normalizeDate } from '../utils/date';
+import { supabase } from '../lib/supabase';
+import { getAttendanceStorageWindow, normalizeDate } from '../utils/date';
 import { clearAllBoardMessages } from './messages';
 import { Athlete, AttendanceRecord } from './types';
 import { setUserRole } from './user';
 import { resetWorkouts } from './workouts';
-import { supabase } from '../lib/supabase';
 
 const ATTENDANCE_STORAGE_KEY = '@attendance_records';
 const LAST_RESET_DATE_KEY = '@attendance_last_reset_date';
@@ -378,14 +378,12 @@ async function loadAttendanceRecords(): Promise<AttendanceRecord[]> {
   return [];
 }
 
+/** Keep only records within the past 14 days; drop older and any future dates. */
 function cleanupOldRecords(): void {
-  const today = normalizeDate(new Date());
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  
+  const { startDate, endDate } = getAttendanceStorageWindow();
   attendanceRecords = attendanceRecords.filter(record => {
     const recordDate = normalizeDate(new Date(record.date));
-    return recordDate >= sevenDaysAgo;
+    return recordDate >= startDate && recordDate <= endDate;
   });
 }
 
@@ -511,6 +509,15 @@ export async function findOrCreateAttendanceRecord(
   date: Date,
   status: AttendanceRecord['status']
 ): Promise<AttendanceRecord> {
+  const today = normalizeDate(new Date());
+  const recordDate = normalizeDate(new Date(date));
+  // Only allow marking "here" (present) for today; no past or future dates
+  if (status === 'present') {
+    if (recordDate.getTime() !== today.getTime()) {
+      throw new Error('You can only mark "Here" for today. Past and future dates are not allowed.');
+    }
+  }
+
   const dateStr = date.toISOString().split('T')[0];
   const existing = attendanceRecords.find(record => {
     const recordDateStr = new Date(record.date).toISOString().split('T')[0];
