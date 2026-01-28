@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
-import { addAthlete, clearAllStorage, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords } from '../../data/athletes';
+import { addAthlete, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords, refetchAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 import { formatDate, getAttendanceStorageWindow, getDateKey, isToday, normalizeDate } from '../../utils/date';
 
@@ -61,11 +61,11 @@ export default function AttendanceScreen() {
     }
   }, [selectedDate, storageWindow]);
 
-  // Refresh attendance status when screen comes into focus
+  // Refresh attendance from database when screen comes into focus (e.g. after check-in)
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
-        await initializeAttendanceRecords();
+        await refetchAttendanceRecords();
         setAthletes([...getAllAthletes()]);
       };
       refresh();
@@ -226,34 +226,6 @@ export default function AttendanceScreen() {
               setIsRemoveMode(false);
             } catch (error) {
               Alert.alert('Error', 'Failed to remove athlete');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Handle resetting all storage
-  const handleResetStorage = () => {
-    Alert.alert(
-      'Reset All Data',
-      'This will clear all stored data and reset to defaults. This cannot be undone. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsLoading(true);
-              await clearAllStorage();
-              const updatedAthletes = getAllAthletes();
-              setAthletes([...updatedAthletes]);
-              setIsLoading(false);
-              Alert.alert('Success', 'All data has been reset to defaults');
-            } catch (error) {
-              setIsLoading(false);
-              Alert.alert('Error', 'Failed to reset data');
             }
           },
         },
@@ -480,13 +452,6 @@ export default function AttendanceScreen() {
                 >
                   <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
                   <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Remove</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleResetStorage}
-                  style={[s.actionButton, s.resetButton, isTablet && s.actionButtonTablet]}
-                >
-                  <Ionicons name="refresh" size={isTablet ? 24 : 20} color={colors.white} />
-                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Reset</Text>
                 </TouchableOpacity>
               </View>
             )}

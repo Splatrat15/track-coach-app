@@ -1,19 +1,15 @@
 /**
  * Athletes Data
- * Store and manage athlete information using Supabase
- * Attendance records still use AsyncStorage for local persistence
+ * Store and manage athlete and attendance data using Supabase
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
-import { getAttendanceStorageWindow, normalizeDate } from '../utils/date';
+import { getAttendanceStorageWindow } from '../utils/date';
 import { clearAllBoardMessages } from './messages';
 import { Athlete, AttendanceRecord } from './types';
 import { setUserRole } from './user';
 import { resetWorkouts } from './workouts';
-
-const ATTENDANCE_STORAGE_KEY = '@attendance_records';
-const LAST_RESET_DATE_KEY = '@attendance_last_reset_date';
 
 // In-memory cache of athletes and attendance
 let athletes: Athlete[] = [];
@@ -129,42 +125,20 @@ export async function initializeAthletes(): Promise<void> {
 }
 
 /**
- * Clear all AsyncStorage data and reset to defaults
- * Note: This only clears local storage, not Supabase data
+ * Clear local-only data (board messages, workouts, user role).
+ * Athletes and attendance live in Supabase and are not cleared.
  */
 export async function clearAllStorage(): Promise<void> {
   try {
-    // Clear all storage keys
     await AsyncStorage.multiRemove([
-      ATTENDANCE_STORAGE_KEY,
-      LAST_RESET_DATE_KEY,
-      '@board_messages', // Board messages storage key
-      '@workouts', // Workouts storage key
-      '@user_role', // User role storage key
+      '@board_messages',
+      '@workouts',
+      '@user_role',
     ]);
-    
-    // Clear board messages
     await clearAllBoardMessages();
-    
-    // Reset in-memory cache for athletes (reload from Supabase)
-    athletes = [];
-    attendanceRecords = [];
-    isLoaded = false;
-    attendanceLoaded = false;
-    
-    // Reload athletes from Supabase
-    await initializeAthletes();
-    
-    // Reinitialize attendance
-    await initializeAttendanceRecords();
-    
-    // Reset workouts to defaults
     await resetWorkouts();
-    
-    // Reset user role to default 'coach'
     await setUserRole('coach');
-    
-    console.log('Storage cleared and reset to defaults');
+    console.log('Local storage cleared (athletes/attendance remain in database)');
   } catch (error) {
     console.error('Error clearing storage:', error);
     throw error;
@@ -358,75 +332,64 @@ export async function deleteAthlete(id: string): Promise<boolean> {
 }
 
 // ========== Attendance Functions ==========
-// These still use AsyncStorage for local persistence
+// Stored in Supabase (attendance_records table, snake_case columns)
+
+function attendanceRowToRecord(row: any): AttendanceRecord {
+  return {
+    id: row.id,
+    athleteId: row.athlete_id,
+    date: new Date(row.date + 'T12:00:00'), // date-only from DB
+    status: row.status,
+    notes: row.notes ?? undefined,
+    checkInTime: row.check_in_time ? new Date(row.check_in_time) : undefined,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+function attendanceRecordToRow(record: AttendanceRecord): any {
+  const dateStr = record.date.toISOString().slice(0, 10);
+  return {
+    id: record.id,
+    athlete_id: record.athleteId,
+    date: dateStr,
+    status: record.status,
+    notes: record.notes ?? null,
+    check_in_time: record.checkInTime ? record.checkInTime.toISOString() : null,
+    created_at: record.createdAt.toISOString(),
+  };
+}
 
 async function loadAttendanceRecords(): Promise<AttendanceRecord[]> {
   try {
-    const data = await AsyncStorage.getItem(ATTENDANCE_STORAGE_KEY);
-    if (data) {
-      const records = JSON.parse(data);
-      return records.map((record: any) => ({
-        ...record,
-        date: new Date(record.date),
-        createdAt: new Date(record.createdAt),
-        checkInTime: record.checkInTime ? new Date(record.checkInTime) : undefined,
-      }));
+    const { startDate, endDate } = getAttendanceStorageWindow();
+    const startStr = startDate.toISOString().slice(0, 10);
+    const endStr = endDate.toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .gte('date', startStr)
+      .lte('date', endStr)
+      .order('date', { ascending: true });
+    if (error) {
+      console.error('Error loading attendance records from Supabase:', error);
+      return [];
     }
+    if (!data) return [];
+    return data.map(attendanceRowToRecord);
   } catch (error) {
     console.error('Error loading attendance records:', error);
-  }
-  return [];
-}
-
-/** Keep only records within the past 14 days; drop older and any future dates. */
-function cleanupOldRecords(): void {
-  const { startDate, endDate } = getAttendanceStorageWindow();
-  attendanceRecords = attendanceRecords.filter(record => {
-    const recordDate = normalizeDate(new Date(record.date));
-    return recordDate >= startDate && recordDate <= endDate;
-  });
-}
-
-async function resetTodaysCheckInsIfNewDay(): Promise<void> {
-  try {
-    const today = normalizeDate(new Date());
-    const todayStr = today.toISOString().split('T')[0];
-    
-    const lastResetDateStr = await AsyncStorage.getItem(LAST_RESET_DATE_KEY);
-    
-    if (lastResetDateStr !== todayStr) {
-      const todayStrForComparison = today.toISOString().split('T')[0];
-      attendanceRecords = attendanceRecords.filter(record => {
-        const recordDateStr = new Date(record.date).toISOString().split('T')[0];
-        return recordDateStr !== todayStrForComparison || record.status !== 'present';
-      });
-      
-      await AsyncStorage.setItem(LAST_RESET_DATE_KEY, todayStr);
-      await saveAttendanceRecords();
-    }
-  } catch (error) {
-    console.error('Error resetting today\'s check-ins:', error);
-  }
-}
-
-async function saveAttendanceRecords(): Promise<void> {
-  try {
-    cleanupOldRecords();
-    await AsyncStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(attendanceRecords));
-  } catch (error) {
-    console.error('Error saving attendance records:', error);
+    return [];
   }
 }
 
 export async function initializeAttendanceRecords(): Promise<void> {
-  if (!attendanceLoaded) {
-    attendanceRecords = await loadAttendanceRecords();
-    cleanupOldRecords();
-    await resetTodaysCheckInsIfNewDay();
-    attendanceLoaded = true;
-  } else {
-    await resetTodaysCheckInsIfNewDay();
-  }
+  attendanceRecords = await loadAttendanceRecords();
+  attendanceLoaded = true;
+}
+
+/** Refetch attendance from Supabase (e.g. when screen comes into focus). */
+export async function refetchAttendanceRecords(): Promise<void> {
+  attendanceRecords = await loadAttendanceRecords();
 }
 
 export function getAllAttendanceRecords(): AttendanceRecord[] {
@@ -470,13 +433,19 @@ export function getAttendanceStatsByDate(date: Date) {
 export async function addAttendanceRecord(
   record: Omit<AttendanceRecord, 'id' | 'createdAt'>
 ): Promise<AttendanceRecord> {
+  const now = new Date();
   const newRecord: AttendanceRecord = {
     ...record,
     id: `attendance_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: new Date(),
+    createdAt: now,
   };
+  const row = attendanceRecordToRow(newRecord);
+  const { error } = await supabase.from('attendance_records').insert(row);
+  if (error) {
+    console.error('Error adding attendance record to Supabase:', error);
+    throw new Error(`Failed to add attendance record: ${error.message}`);
+  }
   attendanceRecords.push(newRecord);
-  await saveAttendanceRecords();
   return newRecord;
 }
 
@@ -486,21 +455,32 @@ export async function updateAttendanceRecord(
 ): Promise<AttendanceRecord | null> {
   const index = attendanceRecords.findIndex(record => record.id === id);
   if (index === -1) return null;
-  
-  attendanceRecords[index] = {
+  const updated: AttendanceRecord = {
     ...attendanceRecords[index],
     ...updates,
   };
-  await saveAttendanceRecords();
-  return attendanceRecords[index];
+  const row = attendanceRecordToRow(updated);
+  const { error } = await supabase
+    .from('attendance_records')
+    .update(row)
+    .eq('id', id);
+  if (error) {
+    console.error('Error updating attendance record in Supabase:', error);
+    throw new Error(`Failed to update attendance record: ${error.message}`);
+  }
+  attendanceRecords[index] = updated;
+  return updated;
 }
 
 export async function deleteAttendanceRecord(id: string): Promise<boolean> {
   const index = attendanceRecords.findIndex(record => record.id === id);
   if (index === -1) return false;
-  
+  const { error } = await supabase.from('attendance_records').delete().eq('id', id);
+  if (error) {
+    console.error('Error deleting attendance record from Supabase:', error);
+    throw new Error(`Failed to delete attendance record: ${error.message}`);
+  }
   attendanceRecords.splice(index, 1);
-  await saveAttendanceRecords();
   return true;
 }
 
@@ -509,50 +489,36 @@ export async function findOrCreateAttendanceRecord(
   date: Date,
   status: AttendanceRecord['status']
 ): Promise<AttendanceRecord> {
-  const today = normalizeDate(new Date());
-  const recordDate = normalizeDate(new Date(date));
-  // Only allow marking "here" (present) for today; no past or future dates
-  if (status === 'present') {
-    if (recordDate.getTime() !== today.getTime()) {
-      throw new Error('You can only mark "Here" for today. Past and future dates are not allowed.');
-    }
-  }
-
   const dateStr = date.toISOString().split('T')[0];
-  const existing = attendanceRecords.find(record => {
+  let existing = attendanceRecords.find(record => {
     const recordDateStr = new Date(record.date).toISOString().split('T')[0];
     return record.athleteId === athleteId && recordDateStr === dateStr;
   });
-
-  // Get current time and round to the second (remove milliseconds)
-  // We store the moment in time (as UTC), and convert to Arizona time when displaying
+  if (!existing) {
+    const { data } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('athlete_id', athleteId)
+      .eq('date', dateStr)
+      .maybeSingle();
+    if (data) {
+      existing = attendanceRowToRecord(data);
+      if (!attendanceRecords.some(r => r.id === existing!.id)) {
+        attendanceRecords.push(existing);
+      }
+    }
+  }
   const now = new Date();
   now.setMilliseconds(0);
-
   if (existing) {
     let checkInTime: Date | undefined;
-    
     if (status === 'present') {
-      // If updating to 'present' and there's no existing checkInTime, set it now
-      // If already 'present', preserve the original checkInTime
       checkInTime = existing.checkInTime || now;
     } else {
-      // If changing from 'present' to another status, clear checkInTime
       checkInTime = undefined;
     }
-    
-    return await updateAttendanceRecord(existing.id, { 
-      status,
-      checkInTime,
-    }) || existing;
-  } else {
-    // New record: set checkInTime if status is 'present'
-    const checkInTime = status === 'present' ? now : undefined;
-    return await addAttendanceRecord({
-      athleteId,
-      date,
-      status,
-      checkInTime,
-    });
+    return await updateAttendanceRecord(existing.id, { status, checkInTime }) ?? existing;
   }
+  const checkInTime = status === 'present' ? now : undefined;
+  return await addAttendanceRecord({ athleteId, date, status, checkInTime });
 }
