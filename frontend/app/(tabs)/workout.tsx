@@ -1802,14 +1802,14 @@ export default function WorkoutScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Today Button */}
+      {/* Today Button - when viewing a past date */}
       {!isToday(selectedDate) && (
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={goToToday}
-          style={[styles.todayButton, isTablet && styles.todayButtonTablet]}
+          style={[styles.todayButton, isTablet && styles.todayButtonTablet, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
           activeOpacity={0.7}
         >
-          <Text style={[styles.todayButtonText, isTablet && styles.todayButtonTextTablet, { color: colors.primary }]}>
+          <Text style={[styles.todayButtonText, isTablet && styles.todayButtonTextTablet, { color: colors.white }]}>
             Today
           </Text>
         </TouchableOpacity>

@@ -154,18 +154,25 @@ async function loadWorkouts(): Promise<Workout[]> {
 }
 
 /**
- * Clean up workouts outside the 3-week window (delete from DB)
+ * Clean up workouts outside the 3-week window (delete from DB).
+ * Deletes workouts before last week Monday and after next week Sunday.
  */
 async function cleanupOldWorkouts(): Promise<void> {
-  const { startDate } = getWorkoutStorageWindow();
+  const { startDate, endDate } = getWorkoutStorageWindow();
   const startStr = startDate.toISOString().slice(0, 10);
-  const { error } = await supabase
+  const endStr = endDate.toISOString().slice(0, 10);
+  // Delete workouts before the window
+  const { error: errBefore } = await supabase
     .from('workouts')
     .delete()
     .lt('date', startStr);
-  if (error) {
-    console.error('Error cleaning up old workouts:', error);
-  }
+  if (errBefore) console.error('Error cleaning up old workouts (before window):', errBefore);
+  // Delete workouts after the window
+  const { error: errAfter } = await supabase
+    .from('workouts')
+    .delete()
+    .gt('date', endStr);
+  if (errAfter) console.error('Error cleaning up old workouts (after window):', errAfter);
 }
 
 /**
@@ -181,9 +188,11 @@ export async function initializeWorkouts(): Promise<void> {
 }
 
 /**
- * Refetch workouts from Supabase and update cache
+ * Refetch workouts from Supabase and update cache.
+ * Also runs cleanup so workouts outside the 3-week window are deleted from the DB.
  */
 export async function refetchWorkouts(): Promise<void> {
+  await cleanupOldWorkouts();
   workouts = await loadWorkouts();
 }
 
