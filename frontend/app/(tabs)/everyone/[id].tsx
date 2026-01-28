@@ -5,7 +5,8 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInp
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../../constants/themes';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { getAthleteById, getAthleteName, refetchAthletes, updateAthlete } from '../../../data/athletes';
+import { useUserRole } from '../../../contexts/UserRoleContext';
+import { deleteAthlete, getAthleteById, getAthleteName, refetchAthletes, updateAthlete } from '../../../data/athletes';
 import { Athlete } from '../../../data/types';
 
 export default function EditAthleteScreen() {
@@ -15,6 +16,7 @@ export default function EditAthleteScreen() {
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { isCoach } = useUserRole();
   const s = getStyles(colors);
 
   const [athlete, setAthlete] = useState<Athlete | null>(null);
@@ -105,6 +107,33 @@ export default function EditAthleteScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!athlete) return;
+    
+    const athleteName = getAthleteName(athlete);
+    Alert.alert(
+      'Delete Athlete',
+      `Are you sure you want to delete ${athleteName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAthlete(athlete.id);
+              await refetchAthletes();
+              router.push('/(tabs)/everyone');
+            } catch (error: any) {
+              console.error('Error deleting athlete:', error);
+              Alert.alert('Error', error.message || 'Failed to delete athlete');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (isLoading || !athlete) {
@@ -206,6 +235,24 @@ export default function EditAthleteScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Delete Button - Only visible to coaches */}
+        {isCoach && (
+          <View style={[s.deleteCard, isTablet && s.deleteCardTablet]}>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={[
+                s.deleteButton,
+                isTablet && s.deleteButtonTablet
+              ]}
+            >
+              <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
+              <Text style={[s.deleteButtonText, isTablet && s.deleteButtonTextTablet]}>
+                Delete
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Rank Dropdown Modal */}
@@ -470,6 +517,44 @@ function getStyles(colors: ThemeColors) {
     },
     modalOptionTextTablet: {
       fontSize: 18,
+    },
+    deleteCard: {
+      backgroundColor: colors.neutralLight,
+      borderRadius: 16,
+      padding: 20,
+      marginTop: 16,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    deleteCardTablet: {
+      padding: 28,
+      borderRadius: 20,
+      marginTop: 20,
+    },
+    deleteButton: {
+      backgroundColor: '#DC2626',
+      borderRadius: 8,
+      padding: 14,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 8,
+    },
+    deleteButtonTablet: {
+      padding: 18,
+      borderRadius: 12,
+      gap: 12,
+    },
+    deleteButtonText: {
+      color: colors.white,
+      fontSize: 16,
+      fontWeight: '600' as const,
+    },
+    deleteButtonTextTablet: {
+      fontSize: 20,
     },
   };
 }
