@@ -165,6 +165,21 @@ export function getAttendanceStorageWindow(): { startDate: Date; endDate: Date }
 }
 
 /**
+ * Get the 7-day window for board messages storage (past 7 days only).
+ * Returns an object with startDate (7 days ago) and endDate (today).
+ * Messages outside this range are auto-deleted to minimize storage.
+ */
+export function getBoardMessagesStorageWindow(): { startDate: Date; endDate: Date } {
+  const today = normalizeDate(new Date());
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 7);
+  return {
+    startDate: normalizeDate(startDate),
+    endDate: today,
+  };
+}
+
+/**
  * Get the 3-week window for workout storage
  * Returns an object with startDate (last week Monday) and endDate (next week Sunday)
  * Example: If today is Wednesday Dec 24, returns Dec 15 (last week Monday) to Jan 5 (next week Sunday)

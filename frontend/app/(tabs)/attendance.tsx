@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useUserRole } from '../../contexts/UserRoleContext';
 import { addAthlete, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords, refetchAthletes, refetchAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 import { formatDate, getAttendanceStorageWindow, getDateKey, isToday, normalizeDate } from '../../utils/date';
@@ -29,6 +30,7 @@ export default function AttendanceScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { isCoach: isCoachUser, refreshRole } = useUserRole();
 
   // Attendance window: past 7 days through today (older records auto-deleted in DB)
   const storageWindow = useMemo(() => getAttendanceStorageWindow(), []);
@@ -36,6 +38,7 @@ export default function AttendanceScreen() {
   // Initialize data on mount
   useEffect(() => {
     const init = async () => {
+      await refreshRole();
       await initializeAthletes();
       await initializeAttendanceRecords();
       setAthletes(getAllAthletes());
@@ -49,7 +52,7 @@ export default function AttendanceScreen() {
       setIsLoading(false);
     };
     init();
-  }, [storageWindow.startDate, storageWindow.endDate]);
+  }, [storageWindow.startDate, storageWindow.endDate, refreshRole]);
 
   // Clamp selectedDate to the 2-week window
   useEffect(() => {
@@ -65,12 +68,18 @@ export default function AttendanceScreen() {
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
+        await refreshRole();
         await refetchAthletes();
         await refetchAttendanceRecords();
         setAthletes([...getAllAthletes()]);
+        // If user is no longer a coach, disable add/remove modes
+        if (!isCoachUser && (isAddMode || isRemoveMode)) {
+          setIsAddMode(false);
+          setIsRemoveMode(false);
+        }
       };
       refresh();
-    }, [])
+    }, [isAddMode, isRemoveMode, isCoachUser, refreshRole])
   );
 
   // Date navigation (back = earlier, forward = toward today)
@@ -404,7 +413,7 @@ export default function AttendanceScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={s.athleteNameContainer}>
-                    {isRemoveMode && (
+                    {isRemoveMode && isCoachUser && (
                       <TouchableOpacity
                         onPress={() => handleRemoveAthlete(athlete.id, getAthleteName(athlete))}
                         style={s.removeIconButton}
@@ -436,48 +445,50 @@ export default function AttendanceScreen() {
             })
           )}
 
-          {/* Add/Remove Buttons at Bottom */}
-          <View style={[s.athletesFooter, isTablet && s.athletesFooterTablet]}>
-            {!isAddMode && !isRemoveMode && (
-              <View style={s.athletesActions}>
+          {/* Add/Remove Buttons at Bottom - Coach Only */}
+          {isCoachUser && (
+            <View style={[s.athletesFooter, isTablet && s.athletesFooterTablet]}>
+              {!isAddMode && !isRemoveMode && (
+                <View style={s.athletesActions}>
+                  <TouchableOpacity
+                    onPress={() => setIsAddMode(true)}
+                    style={[s.actionButton, s.addButton, isTablet && s.actionButtonTablet]}
+                  >
+                    <Ionicons name="add" size={isTablet ? 24 : 20} color={colors.white} />
+                    <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Add</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setIsRemoveMode(true)}
+                    style={[s.actionButton, s.removeButton, isTablet && s.actionButtonTablet]}
+                  >
+                    <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
+                    <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {(isAddMode || isRemoveMode) && (
                 <TouchableOpacity
-                  onPress={() => setIsAddMode(true)}
-                  style={[s.actionButton, s.addButton, isTablet && s.actionButtonTablet]}
+                  onPress={() => {
+                    setIsAddMode(false);
+                    setIsRemoveMode(false);
+                    setNewAthleteFirstName('');
+                    setNewAthleteLastName('');
+                    setNewAthleteRank(null);
+                    setNewAthleteGender(null);
+                    setNewAthleteGoal1600m('');
+                    setShowRankDropdown(false);
+                    setShowGenderDropdown(false);
+                  }}
+                  style={[s.actionButton, s.cancelButton, isTablet && s.actionButtonTablet]}
                 >
-                  <Ionicons name="add" size={isTablet ? 24 : 20} color={colors.white} />
-                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Add</Text>
+                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setIsRemoveMode(true)}
-                  style={[s.actionButton, s.removeButton, isTablet && s.actionButtonTablet]}
-                >
-                  <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
-                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {(isAddMode || isRemoveMode) && (
-              <TouchableOpacity
-                onPress={() => {
-                  setIsAddMode(false);
-                  setIsRemoveMode(false);
-                  setNewAthleteFirstName('');
-                  setNewAthleteLastName('');
-                  setNewAthleteRank(null);
-                  setNewAthleteGender(null);
-                  setNewAthleteGoal1600m('');
-                  setShowRankDropdown(false);
-                  setShowGenderDropdown(false);
-                }}
-                style={[s.actionButton, s.cancelButton, isTablet && s.actionButtonTablet]}
-              >
-                <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+              )}
+            </View>
+          )}
 
-          {/* Add Athlete Input */}
-          {isAddMode && (
+          {/* Add Athlete Input - Coach Only */}
+          {isAddMode && isCoachUser && (
             <View 
               ref={inputContainerRef}
               style={[s.addAthleteContainer, isTablet && s.addAthleteContainerTablet]}

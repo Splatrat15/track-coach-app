@@ -1,65 +1,98 @@
 /**
  * Board Messages Data
- * Store and manage message board posts with AsyncStorage persistence
+ * Store and manage message board posts in Supabase.
+ * Messages older than 7 days are automatically deleted from the database.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../lib/supabase';
+import { getBoardMessagesStorageWindow } from '../utils/date';
 import { BoardMessage } from './types';
-
-const STORAGE_KEY = '@board_messages';
 
 // In-memory cache of board messages
 let boardMessages: BoardMessage[] = [];
 let isLoaded = false;
 
 /**
- * Load board messages from AsyncStorage
+ * Map DB row to BoardMessage (snake_case -> camelCase)
+ */
+function rowToBoardMessage(row: any): BoardMessage {
+  return {
+    id: row.id,
+    header: row.header,
+    author: row.author,
+    content: row.content,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+/**
+ * Load board messages from Supabase within the 7-day window
  */
 async function loadBoardMessages(): Promise<BoardMessage[]> {
   try {
-    const data = await AsyncStorage.getItem(STORAGE_KEY);
-    if (data) {
-      const loaded = JSON.parse(data);
-      return loaded.map((message: any) => ({
-        ...message,
-        createdAt: new Date(message.createdAt),
-      }));
+    const { startDate } = getBoardMessagesStorageWindow();
+    const startStr = startDate.toISOString();
+    const { data: rows, error } = await supabase
+      .from('board_messages')
+      .select('*')
+      .gte('created_at', startStr)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Error loading board messages:', error);
+      return [];
     }
+    if (!rows || rows.length === 0) return [];
+    return rows.map(rowToBoardMessage);
   } catch (error) {
     console.error('Error loading board messages:', error);
+    return [];
   }
-  return [];
 }
 
 /**
- * Save board messages to AsyncStorage
+ * Clean up board messages older than 7 days (delete from DB).
  */
-async function saveBoardMessages(): Promise<void> {
-  try {
-    const dataToSave = JSON.stringify(boardMessages);
-    await AsyncStorage.setItem(STORAGE_KEY, dataToSave);
-  } catch (error) {
-    console.error('Error saving board messages:', error);
+async function cleanupOldBoardMessages(): Promise<void> {
+  const { startDate } = getBoardMessagesStorageWindow();
+  const startStr = startDate.toISOString();
+  const { error } = await supabase
+    .from('board_messages')
+    .delete()
+    .lt('created_at', startStr);
+  if (error) {
+    console.error('Error cleaning up old board messages:', error);
   }
 }
 
 /**
- * Initialize board messages (load from storage)
+ * Initialize board messages (load from Supabase, cleanup, then reload)
  */
 export async function initializeBoardMessages(): Promise<void> {
-  if (!isLoaded) {
-    boardMessages = await loadBoardMessages();
-    // Sort by creation date, newest first
-    boardMessages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    isLoaded = true;
-  }
+  if (isLoaded) return;
+  boardMessages = await loadBoardMessages();
+  await cleanupOldBoardMessages();
+  boardMessages = await loadBoardMessages();
+  isLoaded = true;
+}
+
+/**
+ * Refetch board messages from Supabase and update cache.
+ * Also runs cleanup so messages older than 7 days are deleted.
+ */
+export async function refetchBoardMessages(): Promise<void> {
+  await cleanupOldBoardMessages();
+  boardMessages = await loadBoardMessages();
 }
 
 /**
  * Get all board messages (newest first)
  */
 export function getAllBoardMessages(): BoardMessage[] {
-  return [...boardMessages];
+  const { startDate } = getBoardMessagesStorageWindow();
+  return boardMessages.filter(message => {
+    const messageDate = new Date(message.createdAt);
+    return messageDate >= startDate;
+  });
 }
 
 /**
@@ -75,31 +108,41 @@ export function getBoardMessageById(id: string): BoardMessage | undefined {
 export async function addBoardMessage(
   message: Omit<BoardMessage, 'id' | 'createdAt'>
 ): Promise<BoardMessage> {
-  const newMessage: BoardMessage = {
-    ...message,
-    id: `message_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: new Date(),
+  await initializeBoardMessages();
+
+  const id = `message_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = new Date();
+  const row = {
+    id,
+    header: message.header,
+    author: message.author,
+    content: message.content,
+    created_at: now.toISOString(),
   };
   
-  boardMessages.unshift(newMessage); // Add to beginning (newest first)
-  // Keep only last 100 messages to prevent storage bloat
-  if (boardMessages.length > 100) {
-    boardMessages = boardMessages.slice(0, 100);
+  const { error } = await supabase.from('board_messages').insert(row);
+  if (error) {
+    console.error('Error inserting board message:', error);
+    throw new Error(error.message);
   }
-  
-  await saveBoardMessages();
-  return newMessage;
+
+  await cleanupOldBoardMessages();
+  boardMessages = await loadBoardMessages();
+  const created = getBoardMessageById(id);
+  return created ?? { ...message, id, createdAt: now };
 }
 
 /**
  * Delete a board message
  */
 export async function deleteBoardMessage(id: string): Promise<boolean> {
-  const index = boardMessages.findIndex(message => message.id === id);
-  if (index === -1) return false;
-  
-  boardMessages.splice(index, 1);
-  await saveBoardMessages();
+  await initializeBoardMessages();
+  const { error } = await supabase.from('board_messages').delete().eq('id', id);
+  if (error) {
+    console.error('Error deleting board message:', error);
+    return false;
+  }
+  boardMessages = boardMessages.filter(m => m.id !== id);
   return true;
 }
 
@@ -107,14 +150,12 @@ export async function deleteBoardMessage(id: string): Promise<boolean> {
  * Clear all board messages
  */
 export async function clearAllBoardMessages(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    boardMessages = [];
-    isLoaded = false;
-    console.log('All board messages cleared');
-  } catch (error) {
+  await initializeBoardMessages();
+  const { error } = await supabase.from('board_messages').delete().neq('id', '');
+  if (error) {
     console.error('Error clearing board messages:', error);
     throw error;
   }
+  boardMessages = [];
+  console.log('All board messages cleared');
 }
-

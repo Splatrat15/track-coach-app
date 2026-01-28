@@ -1,11 +1,13 @@
-import { Stack } from 'expo-router';
 import { ThemeProvider } from '../contexts/ThemeContext';
+import { UserRoleProvider } from '../contexts/UserRoleContext';
 import RootLayoutNav from './RootLayoutNav';
 
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <RootLayoutNav />
+      <UserRoleProvider>
+        <RootLayoutNav />
+      </UserRoleProvider>
     </ThemeProvider>
   );
 }

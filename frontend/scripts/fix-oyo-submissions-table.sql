@@ -11,6 +11,7 @@ CREATE TABLE public.oyo_submissions (
   athlete_id TEXT NOT NULL REFERENCES public.athletes(id) ON DELETE CASCADE,
   date DATE NOT NULL,
   photo_uri TEXT,
+  photo_hash TEXT,
   description TEXT,
   submitted_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

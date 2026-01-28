@@ -6,9 +6,9 @@ import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, 
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { Colors, baseStyles } from '../../constants/styles';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useUserRole } from '../../contexts/UserRoleContext';
 import { initializeAthletes, refetchAthletes } from '../../data/athletes';
 import { Exercise, Workout } from '../../data/types';
-import { initializeUserRole, isCoach } from '../../data/user';
 import { addWorkout, getAllWorkouts, getLocationForDate, getWorkoutById, initializeWorkouts, refetchWorkouts, removeExerciseFromWorkout, setLocationForDate, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
 import { formatDate, getDateKey, getWorkoutStorageWindow, isToday, normalizeDate } from '../../utils/date';
@@ -53,7 +53,7 @@ export default function WorkoutScreen() {
   const [expandedSections, setExpandedSections] = useState<{ [workoutId: string]: { [sectionKey: string]: boolean } }>({});
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
-  const [isCoachUser, setIsCoachUser] = useState(false);
+  const { isCoach: isCoachUser, refreshRole } = useUserRole();
   // Workout editing state
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [workoutTypeModalVisible, setWorkoutTypeModalVisible] = useState(false);
@@ -124,11 +124,10 @@ export default function WorkoutScreen() {
 
   useEffect(() => {
     const init = async () => {
-      await initializeUserRole();
+      await refreshRole();
       await initializeAthletes();
       await initializeWorkouts();
       setWorkouts(getAllWorkouts());
-      setIsCoachUser(isCoach());
       
       // Clamp selectedDate to the 3-week window
       const window = getWorkoutStorageWindow();
@@ -141,27 +140,25 @@ export default function WorkoutScreen() {
       setSelectedDate(clampedDate);
     };
     init();
-  }, []);
+  }, [refreshRole]);
 
   // Refresh coach status and athlete list when screen comes into focus (e.g., after add/remove on Attendance)
   const [athleteListRefreshTrigger, setAthleteListRefreshTrigger] = useState(0);
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
-        await initializeUserRole();
+        await refreshRole();
         await refetchAthletes();
         await refetchWorkouts();
         setWorkouts(getAllWorkouts());
         setAthleteListRefreshTrigger(t => t + 1);
-        const coachStatus = isCoach();
-        setIsCoachUser(coachStatus);
         // If user is no longer a coach, disable edit mode
-        if (!coachStatus && isEditMode) {
+        if (!isCoachUser && isEditMode) {
           setIsEditMode(false);
         }
       };
       refresh();
-    }, [isEditMode])
+    }, [isEditMode, isCoachUser, refreshRole])
   );
 
   // Get workouts for selected date

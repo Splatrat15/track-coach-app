@@ -1,30 +1,32 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TextInput, 
-  TouchableOpacity, 
-  KeyboardAvoidingView, 
-  Platform,
-  Linking,
-  Alert,
-  useWindowDimensions 
+import {
+    Alert,
+    KeyboardAvoidingView,
+    Linking,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
-import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../constants/themes';
-import { addBoardMessage, getAllBoardMessages, initializeBoardMessages } from '../../data/messages';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useUserRole } from '../../contexts/UserRoleContext';
+import { addBoardMessage, getAllBoardMessages, initializeBoardMessages, refetchBoardMessages } from '../../data/messages';
 import { BoardMessage } from '../../data/types';
-import { filterProfanity } from '../../utils/profanity';
 import { formatTextWithLinks, TextSegment } from '../../utils/links';
+import { filterProfanity } from '../../utils/profanity';
 
 export default function MessagesScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const { colors } = useTheme();
+  const { isCoach } = useUserRole();
   const [messages, setMessages] = useState<BoardMessage[]>([]);
   const [header, setHeader] = useState('');
   const [author, setAuthor] = useState('');
@@ -45,6 +47,7 @@ export default function MessagesScreen() {
     useCallback(() => {
       const refresh = async () => {
         await initializeBoardMessages();
+        await refetchBoardMessages();
         setMessages([...getAllBoardMessages()]);
       };
       refresh();
@@ -76,7 +79,7 @@ export default function MessagesScreen() {
       setContent('');
 
       // Refresh messages
-      await initializeBoardMessages();
+      await refetchBoardMessages();
       setMessages([...getAllBoardMessages()]);
     } catch (error) {
       console.error('Error adding message:', error);
@@ -158,12 +161,13 @@ export default function MessagesScreen() {
             Message Board
           </Text>
           <Text style={[s.subtitle, isTablet && styles.subtitleTablet]}>
-            Share messages with the team
+            {isCoach ? 'Share messages with the team' : 'View team messages'}
           </Text>
         </View>
 
-        {/* Post Form */}
-        <View style={[s.formCard, isTablet && styles.formCardTablet]}>
+        {/* Post Form - Coach Only */}
+        {isCoach && (
+          <View style={[s.formCard, isTablet && styles.formCardTablet]}>
           <Text style={[s.formTitle, isTablet && styles.formTitleTablet]}>
             Post a Message
           </Text>
@@ -213,6 +217,7 @@ export default function MessagesScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        )}
 
         {/* Messages List */}
         <View style={styles.messagesSection}>
@@ -224,7 +229,7 @@ export default function MessagesScreen() {
             <View style={[s.emptyCard, isTablet && styles.emptyCardTablet]}>
               <Ionicons name="chatbubbles-outline" size={isTablet ? 64 : 48} color={colors.textMuted} />
               <Text style={[s.emptyText, isTablet && styles.emptyTextTablet]}>
-                No messages yet. Be the first to post!
+                {isCoach ? 'No messages yet. Be the first to post!' : 'No messages yet.'}
               </Text>
             </View>
           ) : (

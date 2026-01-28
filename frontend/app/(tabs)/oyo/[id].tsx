@@ -9,7 +9,7 @@ import {
     getAthleteById,
     getAthleteName,
 } from '../../../data/athletes';
-import { addOyoSubmission, getOyoSubmissionsByDate, initializeOyoSubmissions } from '../../../data/oyoSubmissions';
+import { addOyoSubmission, getDuplicateImageSubmissionIds, getOyoSubmissionByAthleteAndDate, getOyoSubmissionsByDate, initializeOyoSubmissions, refetchOyoSubmissions } from '../../../data/oyoSubmissions';
 import { Athlete } from '../../../data/types';
 import { formatTimeArizona, getDateKey, normalizeDate } from '../../../utils/date';
 
@@ -92,7 +92,7 @@ export default function AthleteOyoSubmissionScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -191,8 +191,20 @@ export default function AthleteOyoSubmissionScreen() {
         submittedAt: new Date(),
       });
       
+      // Reload to get updated submissions with hash and duplicate status
       await initializeOyoSubmissions();
-      setModalMessage(`${athlete ? getAthleteName(athlete) : ''} - Submitted!`);
+      await refetchOyoSubmissions();
+      
+      // Check if this submission is now marked as duplicate
+      const submission = getOyoSubmissionByAthleteAndDate(id, selectedDate);
+      const duplicates = getDuplicateImageSubmissionIds();
+      const isDuplicate = submission && duplicates.has(submission.id);
+      
+      if (isDuplicate) {
+        setModalMessage(`${athlete ? getAthleteName(athlete) : ''} - Submitted! ⚠️ This image has been used.`);
+      } else {
+        setModalMessage(`${athlete ? getAthleteName(athlete) : ''} - Submitted!`);
+      }
       setShowModal(true);
       setHasSubmitted(true);
       setSubmissionTime(new Date());
@@ -345,6 +357,18 @@ export default function AthleteOyoSubmissionScreen() {
                 Submitted at {formatTimeArizona(submissionTime)}
               </Text>
             )}
+            {id && (() => {
+              const submission = getOyoSubmissionByAthleteAndDate(id, selectedDate);
+              const isDuplicateImage = submission && getDuplicateImageSubmissionIds().has(submission.id);
+              return isDuplicateImage ? (
+                <View style={styles.duplicateImageBanner}>
+                  <Ionicons name="warning" size={isTablet ? 24 : 20} color={Colors.error} />
+                  <Text style={[baseStyles.text, styles.duplicateImageBannerText, isTablet && styles.duplicateImageBannerTextTablet]}>
+                    This image has been used.
+                  </Text>
+                </View>
+              ) : null;
+            })()}
             
             {/* Show submitted photo if exists */}
             {photoUri && (
@@ -639,6 +663,26 @@ const styles = StyleSheet.create({
   submissionTimeTablet: {
     fontSize: 20,
     marginBottom: 28,
+  },
+  duplicateImageBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.error + '18',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.error + '40',
+  },
+  duplicateImageBannerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.error,
+  },
+  duplicateImageBannerTextTablet: {
+    fontSize: 18,
   },
   modalOverlay: {
     flex: 1,

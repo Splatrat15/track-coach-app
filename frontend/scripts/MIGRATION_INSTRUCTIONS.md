@@ -75,6 +75,26 @@ This creates:
 
 ---
 
+# Board Messages Migration to Supabase
+
+## Create the Database Table
+
+1. Go to your Supabase dashboard: https://supabase.com/dashboard
+2. Select your project
+3. Go to SQL Editor: https://supabase.com/dashboard/project/_/sql
+4. Copy and paste the contents of `create-board-messages-table.sql`
+5. Click "Run" to execute the SQL
+
+This creates the **board_messages** table with `id`, `header`, `author`, `content`, and `created_at`.
+
+## What Changed
+
+- Board messages are now stored in Supabase instead of AsyncStorage.
+- Messages older than 7 days are automatically deleted from the database on load/refetch, same pattern as attendance records.
+- All existing message board functionality (posting, viewing, link detection, profanity filtering) is unchanged.
+
+---
+
 # OYO Submissions Migration to Supabase
 
 ## Create the Database Table

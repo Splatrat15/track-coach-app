@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAllAthletes, getAthleteName, refetchAthletes } from '../../data/athletes';
-import { getOyoSubmissionsByDate, initializeOyoSubmissions, refetchOyoSubmissions } from '../../data/oyoSubmissions';
+import { getDuplicateImageSubmissionIds, getOyoSubmissionsByDate, initializeOyoSubmissions, refetchOyoSubmissions } from '../../data/oyoSubmissions';
 import { Athlete, OyoSubmission } from '../../data/types';
 import { formatDate, formatTimeArizona, getDateKey, normalizeDate } from '../../utils/date';
 
@@ -21,6 +21,7 @@ export default function OyoSubmissionsScreen() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [submissions, setSubmissions] = useState<Map<string, OyoSubmission>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
+  const [submissionsVersion, setSubmissionsVersion] = useState(0); // Force re-compute of duplicate check
 
   // Get the selected date from params, default to today
   const selectedDate = useMemo(() => {
@@ -50,6 +51,7 @@ export default function OyoSubmissionsScreen() {
       submissionsMap.set(sub.athleteId, sub);
     });
     setSubmissions(submissionsMap);
+    setSubmissionsVersion(v => v + 1); // Increment to trigger duplicate check re-computation
   }, [selectedDate]);
 
   // Initialize data on mount and when date changes
@@ -99,6 +101,14 @@ export default function OyoSubmissionsScreen() {
 
   // Athletes are already sorted by last name from the database
   const sortedAthletes = filteredAthletes;
+
+  // Submission IDs that share the same image (duplicate image flag)
+  // Re-compute whenever submissions are reloaded (submissionsVersion changes)
+  const duplicateImageIds = useMemo(() => {
+    const duplicates = getDuplicateImageSubmissionIds();
+    console.log('[OYO List] Duplicate check result:', Array.from(duplicates));
+    return duplicates;
+  }, [submissions, submissionsVersion]);
 
   // Calculate submitted and not submitted counts
   const submissionCounts = useMemo(() => {
@@ -212,6 +222,7 @@ export default function OyoSubmissionsScreen() {
           sortedAthletes.map((athlete) => {
             const hasSubmitted = hasAthleteSubmitted(athlete.id);
             const submission = getAthleteSubmission(athlete.id);
+            const isDuplicateImage = submission && duplicateImageIds.has(submission.id);
             return (
               <TouchableOpacity
                 key={athlete.id}
@@ -232,14 +243,19 @@ export default function OyoSubmissionsScreen() {
                       Submitted at {formatTimeArizona(submission.submittedAt)}
                     </Text>
                   )}
+                  {hasSubmitted && isDuplicateImage && (
+                    <Text style={[s.duplicateImageLabel, isTablet && s.duplicateImageLabelTablet]}>
+                      This image has been used
+                    </Text>
+                  )}
                 </View>
                 <View style={s.iconsContainer}>
                   {hasSubmitted && (
-                    <View style={s.checkmarkContainer}>
+                    <View style={[s.checkmarkContainer, isDuplicateImage && s.duplicateImageContainer]}>
                       <Ionicons 
-                        name="checkmark-circle" 
+                        name={isDuplicateImage ? "close-circle" : "checkmark-circle"} 
                         size={isTablet ? 28 : 24} 
-                        color={colors.secondary} 
+                        color={isDuplicateImage ? colors.error : colors.secondary} 
                         style={s.checkmarkIcon}
                       />
                     </View>
@@ -404,6 +420,18 @@ function getStyles(colors: ThemeColors) {
     },
     submissionTimeTablet: {
       fontSize: 14,
+    },
+    duplicateImageLabel: {
+      fontSize: 12,
+      color: colors.error,
+      fontWeight: '600' as const,
+      marginTop: 2,
+    },
+    duplicateImageLabelTablet: {
+      fontSize: 13,
+    },
+    duplicateImageContainer: {
+      backgroundColor: colors.error + '20',
     },
     iconsContainer: {
       flexDirection: 'row' as const,

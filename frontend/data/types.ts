@@ -87,6 +87,8 @@ export interface OyoSubmission {
   athleteId: string;
   date: Date; // The date of the OYO workout
   photoUri?: string; // URI to the photo (stored locally)
+  /** SHA-256 hash of image content for duplicate detection (images only, not descriptions) */
+  photoHash?: string;
   description?: string; // Description/notes from the athlete
   submittedAt: Date; // Timestamp when the submission was made
   createdAt: Date;

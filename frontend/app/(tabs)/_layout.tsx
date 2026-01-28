@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useUserRole } from '../../contexts/UserRoleContext';
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const { userRole } = useUserRole();
+
   return (
     <Tabs
       screenOptions={{
@@ -42,6 +45,19 @@ export default function TabLayout() {
           fontSize: 20,
           letterSpacing: -0.3,
         },
+        headerRight: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
+            <Ionicons 
+              name={userRole === 'coach' ? 'people' : 'person'} 
+              size={18} 
+              color={colors.white} 
+              style={{ marginRight: 6 }}
+            />
+            <Text style={{ color: colors.white, fontSize: 14, fontWeight: '600' }}>
+              {userRole === 'coach' ? 'Coach' : 'Athlete'}
+            </Text>
+          </View>
+        ),
       }}
     >
       <Tabs.Screen
@@ -103,6 +119,20 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="everyone"
+        options={{
+          href: null, // Hide from tab bar
+          headerShown: false, // Hide header, we have custom header
+        }}
+      />
+      <Tabs.Screen
+        name="everyone/[id]"
+        options={{
+          href: null, // Hide from tab bar
+          headerShown: false, // Hide header, we have custom header
         }}
       />
     </Tabs>

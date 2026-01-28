@@ -1,36 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback } from 'react';
 import { Alert, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
-import { getUserRole, initializeUserRole, setUserRole, UserRole } from '../../data/user';
+import { useUserRole } from '../../contexts/UserRoleContext';
+import { UserRole } from '../../data/user';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const { isDark, colors, toggleTheme } = useTheme();
-  const [userRole, setUserRoleState] = useState<UserRole>('coach');
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Initialize user role on mount
-  useEffect(() => {
-    const init = async () => {
-      await initializeUserRole();
-      setUserRoleState(getUserRole());
-      setIsLoading(false);
-    };
-    init();
-  }, []);
+  const { userRole, setRole, refreshRole } = useUserRole();
 
   // Refresh user role when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      const refresh = async () => {
-        await initializeUserRole();
-        setUserRoleState(getUserRole());
-      };
-      refresh();
-    }, [])
+      refreshRole();
+    }, [refreshRole])
   );
 
   const handleRoleChange = async (newRole: UserRole) => {
@@ -47,21 +34,12 @@ export default function ProfileScreen() {
         {
           text: 'Confirm',
           onPress: async () => {
-            await setUserRole(newRole);
-            setUserRoleState(newRole);
+            await setRole(newRole);
           },
         },
       ]
     );
   };
-
-  if (isLoading) {
-    return (
-      <View style={[styles.container(colors), styles.centered]}>
-        <Text style={[styles.loadingText(colors)]}>Loading...</Text>
-      </View>
-    );
-  }
 
   return (
     <ScrollView 
@@ -195,6 +173,27 @@ export default function ProfileScreen() {
             </Text>
           </View>
         </View>
+      </View>
+
+      {/* Everyone Section */}
+      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+          Team
+        </Text>
+        <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+          View all coaches and athletes
+        </Text>
+        <TouchableOpacity
+          style={[styles.everyoneButton(colors), isTablet && styles.everyoneButtonTablet]}
+          onPress={() => router.push('/(tabs)/everyone')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="people" size={isTablet ? 28 : 24} color={colors.primary} />
+          <Text style={[styles.everyoneButtonText(colors), isTablet && styles.everyoneButtonTextTablet]}>
+            Everyone
+          </Text>
+          <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -380,6 +379,30 @@ const styles = {
     fontWeight: '600' as const,
   }),
   infoValueTablet: {
+    fontSize: 18,
+  },
+  everyoneButton: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: colors.neutralMedium,
+  }),
+  everyoneButtonTablet: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  everyoneButtonText: (colors: ThemeColors) => ({
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.text,
+  }),
+  everyoneButtonTextTablet: {
     fontSize: 18,
   },
 };

@@ -8,6 +8,7 @@
 
 import { supabase } from '../lib/supabase';
 import { getWorkoutStorageWindow, normalizeDate, parseDateOnly } from '../utils/date';
+import { computeImageHash } from '../utils/oyoImageHash';
 import { OyoSubmission } from './types';
 
 // In-memory cache of OYO submissions
@@ -23,6 +24,7 @@ function rowToOyoSubmission(row: any): OyoSubmission {
     athleteId: row.athlete_id,
     date: row.date ? parseDateOnly(String(row.date).slice(0, 10)) : new Date(),
     photoUri: row.photo_uri ?? undefined,
+    photoHash: row.photo_hash ?? undefined,
     description: row.description ?? undefined,
     submittedAt: new Date(row.submitted_at),
     createdAt: new Date(row.created_at),
@@ -152,6 +154,31 @@ export function getOyoSubmissionByAthleteAndDate(athleteId: string, date: Date):
 }
 
 /**
+ * Submission IDs that have a duplicate image (same image used by this athlete before or by another athlete).
+ * Only checks images; descriptions are not compared.
+ * Both/all submissions that share the same image are flagged.
+ */
+export function getDuplicateImageSubmissionIds(): Set<string> {
+  const withPhoto = oyoSubmissions.filter(s => s.photoHash);
+  console.log(`[DuplicateCheck] Checking ${withPhoto.length} submissions with photos out of ${oyoSubmissions.length} total`);
+  const byHash = new Map<string, string[]>();
+  for (const s of withPhoto) {
+    const hash = s.photoHash!;
+    if (!byHash.has(hash)) byHash.set(hash, []);
+    byHash.get(hash)!.push(s.id);
+  }
+  const ids = new Set<string>();
+  for (const [hash, submissionIds] of byHash.entries()) {
+    if (submissionIds.length > 1) {
+      console.log(`[DuplicateCheck] Found duplicate hash ${hash.substring(0, 16)}... used by ${submissionIds.length} submissions:`, submissionIds);
+      submissionIds.forEach(id => ids.add(id));
+    }
+  }
+  console.log(`[DuplicateCheck] Total duplicate submission IDs: ${ids.size}`);
+  return ids;
+}
+
+/**
  * Add a new OYO submission (or update existing for same athlete+date).
  * Only allows submissions for today. Records outside the 3-week window are not created.
  */
@@ -183,15 +210,34 @@ export async function addOyoSubmission(
 
   const id = `oyo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = new Date();
+  const photoHash = submission.photoUri ? await computeImageHash(submission.photoUri) : null;
+  
+  if (submission.photoUri && !photoHash) {
+    console.error(`[addOyoSubmission] Failed to compute hash for photo URI: ${submission.photoUri.substring(0, 50)}`);
+  }
+  
+  // Check for duplicate image BEFORE inserting
+  if (photoHash) {
+    const existingWithSameHash = oyoSubmissions.find(s => s.photoHash === photoHash);
+    if (existingWithSameHash) {
+      console.warn(`[addOyoSubmission] ⚠️ DUPLICATE IMAGE DETECTED: New submission ${id} (athlete ${submission.athleteId}) has same hash as existing submission ${existingWithSameHash.id} (athlete ${existingWithSameHash.athleteId})`);
+      console.warn(`[addOyoSubmission] Hash: ${photoHash.substring(0, 16)}...`);
+    } else {
+      console.log(`[addOyoSubmission] No duplicate found for hash: ${photoHash.substring(0, 16)}...`);
+    }
+  }
+  
   const row = {
     id,
     athlete_id: submission.athleteId,
     date: submissionDate.toISOString().slice(0, 10),
     photo_uri: submission.photoUri ?? null,
+    photo_hash: photoHash,
     description: submission.description ?? null,
     submitted_at: (submission.submittedAt instanceof Date ? submission.submittedAt : new Date()).toISOString(),
     created_at: now.toISOString(),
   };
+  console.log(`[addOyoSubmission] Inserting row with photo_hash: ${photoHash ? photoHash.substring(0, 16) + '...' : 'null'}`);
   const { error } = await supabase.from('oyo_submissions').insert(row);
   if (error) {
     console.error('Error inserting OYO submission:', error);
@@ -201,7 +247,20 @@ export async function addOyoSubmission(
   await cleanupOldOyoSubmissions();
   oyoSubmissions = await loadOyoSubmissions();
   const created = getOyoSubmissionById(id);
-  return created ?? { ...submission, id, createdAt: now };
+  
+  // Verify duplicate detection after reload
+  if (photoHash && created) {
+    const duplicates = getDuplicateImageSubmissionIds();
+    if (duplicates.has(id)) {
+      console.warn(`[addOyoSubmission] ✅ Submission ${id} confirmed as duplicate after reload`);
+    } else {
+      console.log(`[addOyoSubmission] Submission ${id} is NOT marked as duplicate (hash: ${photoHash.substring(0, 16)}...)`);
+    }
+    // Log the created submission's hash
+    console.log(`[addOyoSubmission] Created submission photoHash: ${created.photoHash ? created.photoHash.substring(0, 16) + '...' : 'null'}`);
+  }
+  
+  return created ?? { ...submission, id, createdAt: now, photoHash: photoHash ?? undefined };
 }
 
 /**
@@ -236,7 +295,10 @@ export async function updateOyoSubmission(
   const row: any = {};
   if (updates.athleteId !== undefined) row.athlete_id = updates.athleteId;
   if (updates.date !== undefined) row.date = normalizeDate(updates.date).toISOString().slice(0, 10);
-  if (updates.photoUri !== undefined) row.photo_uri = updates.photoUri ?? null;
+  if (updates.photoUri !== undefined) {
+    row.photo_uri = updates.photoUri ?? null;
+    row.photo_hash = updates.photoUri ? await computeImageHash(updates.photoUri) : null;
+  }
   if (updates.description !== undefined) row.description = updates.description ?? null;
   if (updates.submittedAt !== undefined) row.submitted_at = (updates.submittedAt instanceof Date ? updates.submittedAt : new Date(updates.submittedAt)).toISOString();
 
