@@ -6,8 +6,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
-import { getAllAthletes, getAthleteName, initializeAthletes, refetchAthletes } from '../../data/athletes';
+import { getAllAthletes, initializeAthletes, refetchAthletes } from '../../data/athletes';
 import { Athlete } from '../../data/types';
+
+/**
+ * Format athlete name as "First Name Last Initial." for display in the everyone list
+ */
+function getAthleteNameShort(athlete: Athlete): string {
+  if (athlete.lastName) {
+    return `${athlete.firstName} ${athlete.lastName.charAt(0).toUpperCase()}.`;
+  }
+  return athlete.firstName;
+}
 
 export default function EveryoneScreen() {
   const router = useRouter();
@@ -124,7 +134,7 @@ export default function EveryoneScreen() {
                     <Ionicons name="person" size={isTablet ? 24 : 20} color={colors.primary} />
                   </View>
                   <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
-                    {getAthleteName(athlete)}
+                    {getAthleteNameShort(athlete)}
                   </Text>
                 </View>
                 <View style={s.listItemRight}>
