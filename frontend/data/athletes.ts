@@ -1,6 +1,7 @@
 /**
  * Athletes Data
- * Store and manage athlete information and attendance with AsyncStorage persistence
+ * Store and manage athlete information using Supabase
+ * Attendance records still use AsyncStorage for local persistence
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,29 +10,10 @@ import { clearAllBoardMessages } from './messages';
 import { Athlete, AttendanceRecord } from './types';
 import { setUserRole } from './user';
 import { resetWorkouts } from './workouts';
+import { supabase } from '../lib/supabase';
 
-const STORAGE_KEY = '@athletes';
 const ATTENDANCE_STORAGE_KEY = '@attendance_records';
 const LAST_RESET_DATE_KEY = '@attendance_last_reset_date';
-
-// Default athletes data
-const DEFAULT_ATHLETES: Omit<Athlete, 'createdAt' | 'updatedAt'>[] = [
-  { id: 'athlete_1', firstName: 'Carter', lastName: 'Frisk', gender: 'male', rank: 'veteran', goal1600m: '4:20' },
-  { id: 'athlete_2', firstName: 'Jesse', lastName: 'Hancock', gender: 'male', rank: 'veteran', goal1600m: '5:08' },
-  { id: 'athlete_3', firstName: "La'a", lastName: 'Hancock', gender: 'male', rank: 'varsity', goal1600m: '4:13' },
-  { id: 'athlete_4', firstName: 'Lydia', lastName: 'Leeman', gender: 'female', rank: 'varsity', goal1600m: '6:07' },
-  { id: 'athlete_5', firstName: 'Ben', lastName: 'Leeman', gender: 'male', rank: 'veteran', goal1600m: '5:23' },
-  { id: 'athlete_6', firstName: 'Luke', lastName: 'Littlefield', gender: 'male', rank: 'varsity', goal1600m: '4:05' },
-  { id: 'athlete_7', firstName: 'Ethan', lastName: 'Magaron', gender: 'male', rank: 'rookie', goal1600m: '6:35' },
-  { id: 'athlete_8', firstName: 'Nicolette', lastName: 'Magaron', gender: 'female', rank: 'veteran', goal1600m: '6:40' },
-  { id: 'athlete_9', firstName: 'Bailey', lastName: 'Orr', gender: 'female', rank: 'veteran/varsity', goal1600m: '5:40' },
-  { id: 'athlete_10', firstName: 'Jocelyn', lastName: 'Prather', gender: 'female', rank: 'veteran/varsity', goal1600m: '5:35' },
-  { id: 'athlete_11', firstName: 'Evelyn', lastName: 'Shearer', gender: 'female', rank: 'rookie', goal1600m: '8:29' },
-  { id: 'athlete_12', firstName: 'Peyton', lastName: 'Starke', gender: 'female', rank: 'veteran', goal1600m: '7:36' },
-  { id: 'athlete_13', firstName: 'Robert', lastName: 'Thiel', gender: 'male', rank: 'varsity', goal1600m: '5:00' },
-  { id: 'athlete_14', firstName: 'Caleb', lastName: 'Wheeler', gender: 'male', rank: 'veteran', goal1600m: '5:29' },
-  { id: 'athlete_15', firstName: 'Bethany', lastName: 'Yaso', gender: 'female', rank: 'varsity', goal1600m: '6:29' },
-];
 
 // In-memory cache of athletes and attendance
 let athletes: Athlete[] = [];
@@ -40,87 +22,120 @@ let isLoaded = false;
 let attendanceLoaded = false;
 
 /**
- * Load athletes from AsyncStorage
+ * Convert Supabase athlete row to Athlete type
+ * Handles both camelCase (quoted) and snake_case column names
+ */
+function supabaseRowToAthlete(row: any): Athlete {
+  return {
+    id: row.id,
+    firstName: row.firstName || row.first_name || '',
+    lastName: row.lastName || row.last_name || '',
+    gender: row.gender || null,
+    rank: row.rank || null,
+    goal1600m: row.goal1600m || row.goal_1600m || null,
+    createdAt: new Date(row.createdAt || row.created_at),
+    updatedAt: new Date(row.updatedAt || row.updated_at),
+  };
+}
+
+// Track which column format the database uses (camelCase or snake_case)
+let useSnakeCase = false;
+
+/**
+ * Convert Athlete to Supabase row format
+ * Uses the appropriate column format based on what the database expects
+ */
+function athleteToSupabaseRow(athlete: Athlete): any {
+  if (useSnakeCase) {
+    return {
+      id: athlete.id,
+      first_name: athlete.firstName,
+      last_name: athlete.lastName,
+      gender: athlete.gender,
+      rank: athlete.rank,
+      goal_1600m: athlete.goal1600m,
+      created_at: athlete.createdAt.toISOString(),
+      updated_at: athlete.updatedAt.toISOString(),
+    };
+  } else {
+    return {
+      id: athlete.id,
+      firstName: athlete.firstName,
+      lastName: athlete.lastName,
+      gender: athlete.gender,
+      rank: athlete.rank,
+      goal1600m: athlete.goal1600m,
+      createdAt: athlete.createdAt.toISOString(),
+      updatedAt: athlete.updatedAt.toISOString(),
+    };
+  }
+}
+
+/**
+ * Load athletes from Supabase
  */
 async function loadAthletes(): Promise<Athlete[]> {
   try {
-    const data = await AsyncStorage.getItem(STORAGE_KEY);
-    if (data) {
-      const loaded = JSON.parse(data);
-      // Convert date strings back to Date objects and migrate old format
-      return loaded.map((athlete: any) => {
-        // Migrate from old name field to firstName/lastName
-        if (athlete.name && !athlete.firstName) {
-          const nameParts = athlete.name.split(' ');
-          athlete.firstName = nameParts[0] || '';
-          athlete.lastName = nameParts.slice(1).join(' ') || '';
-        }
-        // Explicitly map all fields to ensure nothing is lost
-        return {
-          id: athlete.id,
-          firstName: athlete.firstName || '',
-          lastName: athlete.lastName || '',
-          gender: athlete.gender || null,
-          rank: athlete.rank || null,
-          goal1600m: athlete.goal1600m || null,
-          createdAt: new Date(athlete.createdAt),
-          updatedAt: new Date(athlete.updatedAt),
-        };
-      });
+    // Try camelCase first, fallback to snake_case
+    const { data, error } = await supabase
+      .from('athletes')
+      .select('*')
+      .order('lastName', { ascending: true, nullsFirst: false });
+    
+    // If camelCase fails, try snake_case (PostgreSQL default)
+    if (error && (error.message.includes('does not exist') || error.message.includes('column'))) {
+      useSnakeCase = true; // Remember we're using snake_case
+      const result = await supabase
+        .from('athletes')
+        .select('*')
+        .order('last_name', { ascending: true, nullsFirst: false });
+      
+      if (result.error) {
+        console.error('Error loading athletes from Supabase:', result.error);
+        return [];
+      }
+      
+      if (!result.data) {
+        return [];
+      }
+      
+      return result.data.map(supabaseRowToAthlete);
     }
+
+    if (error) {
+      console.error('Error loading athletes from Supabase:', error);
+      return [];
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    return data.map(supabaseRowToAthlete);
   } catch (error) {
     console.error('Error loading athletes:', error);
-  }
-  return [];
-}
-
-/**
- * Save athletes to AsyncStorage
- */
-async function saveAthletes(): Promise<void> {
-  try {
-    const dataToSave = JSON.stringify(athletes);
-    await AsyncStorage.setItem(STORAGE_KEY, dataToSave);
-    // Debug: log first athlete's gender to verify it's being saved
-    if (athletes.length > 0 && process.env.NODE_ENV === 'development') {
-      console.log('Saved athletes - First athlete gender:', athletes[0].gender);
-    }
-  } catch (error) {
-    console.error('Error saving athletes:', error);
+    return [];
   }
 }
 
 /**
- * Initialize athletes (load from storage or use default)
+ * Initialize athletes (load from Supabase)
  */
 export async function initializeAthletes(): Promise<void> {
   if (!isLoaded) {
-    const loaded = await loadAthletes();
-    if (loaded.length > 0) {
-      athletes = sortAthletesByLastName(loaded);
-    } else {
-      // Default athletes if none exist
-      const defaultAthletes: Athlete[] = DEFAULT_ATHLETES.map(athlete => ({
-        ...athlete,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
-      athletes = sortAthletesByLastName(defaultAthletes);
-      await saveAthletes();
-    }
+    athletes = await loadAthletes();
     isLoaded = true;
   }
 }
 
 /**
  * Clear all AsyncStorage data and reset to defaults
- * Use this to reset the app data to match the current code
+ * Note: This only clears local storage, not Supabase data
  */
 export async function clearAllStorage(): Promise<void> {
   try {
     // Clear all storage keys
     await AsyncStorage.multiRemove([
-      STORAGE_KEY,
       ATTENDANCE_STORAGE_KEY,
       LAST_RESET_DATE_KEY,
       '@board_messages', // Board messages storage key
@@ -131,21 +146,14 @@ export async function clearAllStorage(): Promise<void> {
     // Clear board messages
     await clearAllBoardMessages();
     
-    // Reset in-memory cache for athletes
+    // Reset in-memory cache for athletes (reload from Supabase)
     athletes = [];
     attendanceRecords = [];
     isLoaded = false;
     attendanceLoaded = false;
     
-    // Force reinitialize with default data by directly setting defaults
-    const defaultAthletes: Athlete[] = DEFAULT_ATHLETES.map(athlete => ({
-      ...athlete,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }));
-    athletes = sortAthletesByLastName(defaultAthletes);
-    await saveAthletes();
-    isLoaded = true;
+    // Reload athletes from Supabase
+    await initializeAthletes();
     
     // Reinitialize attendance
     await initializeAttendanceRecords();
@@ -157,9 +165,6 @@ export async function clearAllStorage(): Promise<void> {
     await setUserRole('coach');
     
     console.log('Storage cleared and reset to defaults');
-    if (process.env.NODE_ENV === 'development') {
-      console.log('First athlete after reset:', athletes[0]?.firstName, athletes[0]?.gender);
-    }
   } catch (error) {
     console.error('Error clearing storage:', error);
     throw error;
@@ -197,7 +202,7 @@ export function getAthleteAttendanceStatus(athleteId: string, date: Date): 'pres
 }
 
 /**
- * Get all athletes (already sorted by last name alphabetically in database)
+ * Get all athletes (already sorted by last name alphabetically from database)
  */
 export function getAllAthletes(): Athlete[] {
   return athletes;
@@ -268,15 +273,30 @@ export async function addAthlete(athlete: Omit<Athlete, 'id' | 'createdAt' | 'up
     throw new Error('Athlete with this name already exists');
   }
   
+  const now = new Date();
   const newAthlete: Athlete = {
     ...athlete,
     id: `athlete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   };
+
+  // Insert into Supabase
+  const { data, error } = await supabase
+    .from('athletes')
+    .insert(athleteToSupabaseRow(newAthlete))
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error adding athlete to Supabase:', error);
+    throw new Error(`Failed to add athlete: ${error.message}`);
+  }
+
+  // Update local cache
   athletes.push(newAthlete);
   athletes = sortAthletesByLastName(athletes);
-  await saveAthletes();
+  
   return newAthlete;
 }
 
@@ -287,14 +307,30 @@ export async function updateAthlete(id: string, updates: Partial<Athlete>): Prom
   const index = athletes.findIndex(athlete => athlete.id === id);
   if (index === -1) return null;
   
-  athletes[index] = {
+  const updatedAthlete: Athlete = {
     ...athletes[index],
     ...updates,
     updatedAt: new Date(),
   };
+
+  // Update in Supabase
+  const { data, error } = await supabase
+    .from('athletes')
+    .update(athleteToSupabaseRow(updatedAthlete))
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating athlete in Supabase:', error);
+    throw new Error(`Failed to update athlete: ${error.message}`);
+  }
+
+  // Update local cache
+  athletes[index] = updatedAthlete;
   athletes = sortAthletesByLastName(athletes);
-  await saveAthletes();
-  return athletes[index];
+  
+  return updatedAthlete;
 }
 
 /**
@@ -304,14 +340,25 @@ export async function deleteAthlete(id: string): Promise<boolean> {
   const index = athletes.findIndex(athlete => athlete.id === id);
   if (index === -1) return false;
   
+  // Delete from Supabase
+  const { error } = await supabase
+    .from('athletes')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting athlete from Supabase:', error);
+    throw new Error(`Failed to delete athlete: ${error.message}`);
+  }
+
+  // Update local cache
   athletes.splice(index, 1);
-  // No need to re-sort after delete, but we'll keep it sorted for consistency
-  athletes = sortAthletesByLastName(athletes);
-  await saveAthletes();
+  
   return true;
 }
 
 // ========== Attendance Functions ==========
+// These still use AsyncStorage for local persistence
 
 async function loadAttendanceRecords(): Promise<AttendanceRecord[]> {
   try {
