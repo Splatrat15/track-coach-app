@@ -2209,8 +2209,8 @@ export default function WorkoutScreen() {
                                         displayName = `${rank.charAt(0).toUpperCase() + rank.slice(1)}: ${exercise.name}`;
                                       }
                                     } else if (isMultiPace) {
-                                      // Multi-pace: use exercise name which includes pace description
-                                      displayName = exercise.name;
+                                      // Multi-pace: show only rank name; pace detail (e.g. "30 R, 5 T") is shown below
+                                      displayName = rank.charAt(0).toUpperCase() + rank.slice(1);
                                     } else {
                                       // Single-pace time-based: just show rank name (duration is shown in the box)
                                       displayName = rank.charAt(0).toUpperCase() + rank.slice(1);
