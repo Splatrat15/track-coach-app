@@ -5,7 +5,7 @@ import { baseStyles } from '../../constants/styles';
 import { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAllAthletes, getEffectiveRank, initializeAthletes } from '../../data/athletes';
-import { Athlete } from '../../data/types';
+import { Athlete, SpreadsheetData } from '../../data/types';
 
 interface SpreadsheetProps {
   workoutType?: 'workout' | 'longrun' | 'recovery';
@@ -13,6 +13,12 @@ interface SpreadsheetProps {
   isEditMode?: boolean;
   /** When this changes, athlete list is reloaded (e.g. after add/remove on another tab). */
   athleteRefreshTrigger?: number;
+  /** Workout ID for persisting spreadsheet data (custom columns + time differences). */
+  workoutId?: string;
+  /** Initial data from workout/preset so times and custom columns are restored. */
+  initialSpreadsheetData?: SpreadsheetData | null;
+  /** Called when custom columns or time differences change (debounced) so parent can persist. */
+  onSpreadsheetDataChange?: (workoutId: string, data: SpreadsheetData) => void;
 }
 
 /**
@@ -220,14 +226,27 @@ function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Workout
   return columns;
 }
 
-export default function Spreadsheet({ workoutType, isTablet, isEditMode = false, athleteRefreshTrigger }: SpreadsheetProps) {
+function normalizeSpreadsheetData(data: SpreadsheetData | null | undefined): SpreadsheetData | null {
+  if (!data || !data.customColumns) return null;
+  return {
+    customColumns: {
+      rookie: data.customColumns.rookie ?? [],
+      veteran: data.customColumns.veteran ?? [],
+      varsity: data.customColumns.varsity ?? [],
+    },
+    timeDifferences: data.timeDifferences ?? {},
+  };
+}
+
+export default function Spreadsheet({ workoutType, isTablet, isEditMode = false, athleteRefreshTrigger, workoutId, initialSpreadsheetData, onSpreadsheetDataChange }: SpreadsheetProps) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const initial = normalizeSpreadsheetData(initialSpreadsheetData ?? undefined);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
   // Store time differences for dropdown cells: key format is "rowIndex-columnIndex", value is number (-30 to +30) or null if not set
-  const [timeDifferences, setTimeDifferences] = useState<Record<string, number | null>>({});
+  const [timeDifferences, setTimeDifferences] = useState<Record<string, number | null>>(initial?.timeDifferences ?? {});
   // Track which dropdown is currently open: key format is "rowIndex-columnIndex"
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   // Custom columns added by the user (editable columns) - organized by rank
@@ -236,9 +255,9 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false,
     veteran: WorkoutColumn[];
     varsity: WorkoutColumn[];
   }>({
-    rookie: [],
-    veteran: [],
-    varsity: [],
+    rookie: initial?.customColumns?.rookie ?? [],
+    veteran: initial?.customColumns?.veteran ?? [],
+    varsity: initial?.customColumns?.varsity ?? [],
   });
   // Modal state for adding/editing columns
   const [addColumnModalVisible, setAddColumnModalVisible] = useState(false);
@@ -285,6 +304,53 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false,
     draggingIndexRef.current = draggingIndex;
     isTabletRef.current = isTablet;
   }, [draggingAthleteId, draggingIndex, isTablet]);
+
+  // Sync from initial data when we switch to a different workout (by workoutId)
+  const prevWorkoutIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (workoutId === prevWorkoutIdRef.current) return;
+    prevWorkoutIdRef.current = workoutId;
+    const next = normalizeSpreadsheetData(initialSpreadsheetData ?? undefined);
+    if (next) {
+      setCustomColumns({
+        rookie: (next.customColumns.rookie ?? []) as WorkoutColumn[],
+        veteran: (next.customColumns.veteran ?? []) as WorkoutColumn[],
+        varsity: (next.customColumns.varsity ?? []) as WorkoutColumn[],
+      });
+      setTimeDifferences(next.timeDifferences ?? {});
+    } else {
+      setCustomColumns({ rookie: [], veteran: [], varsity: [] });
+      setTimeDifferences({});
+    }
+  }, [workoutId, initialSpreadsheetData]);
+
+  // Persist spreadsheet data only when the user changes something (debounced). Skip first run to avoid
+  // persist-on-mount which would trigger refetch and re-render (blinking). Use ref for callback so effect
+  // does not re-run when parent re-renders.
+  const onSpreadsheetDataChangeRef = useRef(onSpreadsheetDataChange);
+  onSpreadsheetDataChangeRef.current = onSpreadsheetDataChange;
+  const skipNextPersistRef = useRef(true); // Skip persist on mount and when workoutId changes
+  const prevPersistWorkoutIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!workoutId || !onSpreadsheetDataChange) return;
+    if (prevPersistWorkoutIdRef.current !== workoutId) {
+      prevPersistWorkoutIdRef.current = workoutId;
+      skipNextPersistRef.current = true;
+      return;
+    }
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      onSpreadsheetDataChangeRef.current?.(workoutId, {
+        customColumns: { ...customColumns },
+        timeDifferences: { ...timeDifferences },
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [workoutId, customColumns, timeDifferences]);
 
   const loadAthletes = useCallback(async () => {
     await initializeAthletes();

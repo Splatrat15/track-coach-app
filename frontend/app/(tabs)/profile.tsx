@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback } from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, Modal, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { baseStyles } from '../../constants/styles';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
+import type { WorkoutPreset } from '../../data/types';
 import { UserRole } from '../../data/user';
+import { deleteWorkoutPreset, getAllWorkoutPresets } from '../../data/workoutPresets';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -12,6 +15,8 @@ export default function ProfileScreen() {
   const isTablet = width >= 768;
   const { isDark, colors, toggleTheme } = useTheme();
   const { userRole, setRole, refreshRole } = useUserRole();
+  const [presetsModalVisible, setPresetsModalVisible] = useState(false);
+  const [presetList, setPresetList] = useState<WorkoutPreset[]>([]);
 
   // Refresh user role when screen comes into focus
   useFocusEffect(
@@ -35,6 +40,34 @@ export default function ProfileScreen() {
           text: 'Confirm',
           onPress: async () => {
             await setRole(newRole);
+          },
+        },
+      ]
+    );
+  };
+
+  const openPresetsModal = async () => {
+    const list = await getAllWorkoutPresets();
+    setPresetList(list);
+    setPresetsModalVisible(true);
+  };
+
+  const handleDeletePreset = (preset: WorkoutPreset) => {
+    Alert.alert(
+      'Delete Preset',
+      `Delete "${preset.label}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const ok = await deleteWorkoutPreset(preset.id);
+            if (ok) {
+              setPresetList(prev => prev.filter(p => p.id !== preset.id));
+            } else {
+              Alert.alert('Error', 'Failed to delete preset.');
+            }
           },
         },
       ]
@@ -157,6 +190,29 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* Workout Presets - coach only */}
+      {userRole === 'coach' && (
+        <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+          <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+            Workout Presets
+          </Text>
+          <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+            Manage saved workout presets (max 15). Delete presets you no longer need.
+          </Text>
+          <TouchableOpacity
+            style={[styles.presetsButton(colors), isTablet && styles.presetsButtonTablet]}
+            onPress={openPresetsModal}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="bookmark" size={isTablet ? 28 : 24} color={colors.primary} />
+            <Text style={[styles.presetsButtonText(colors), isTablet && styles.presetsButtonTextTablet]}>
+              Manage Presets
+            </Text>
+            <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Info Section */}
       <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
         <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
@@ -195,6 +251,62 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
+
+      {/* Presets Management Modal */}
+      <Modal
+        visible={presetsModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPresetsModalVisible(false)}
+      >
+        <View style={styles.presetsModalOverlay}>
+          <View style={[styles.presetsModalContent(colors), isTablet && styles.presetsModalContentTablet]}>
+            <View style={styles.presetsModalHeader}>
+              <Text style={[baseStyles.heading, styles.presetsModalTitle(colors), isTablet && styles.presetsModalTitleTablet]}>
+                Workout Presets
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPresetsModalVisible(false)}
+                style={styles.presetsModalCloseButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.presetsModalScroll} showsVerticalScrollIndicator={false}>
+              {presetList.length === 0 ? (
+                <Text style={[baseStyles.text, styles.presetsEmpty(colors)]}>
+                  No presets yet. Save a workout as a preset from the Workout tab.
+                </Text>
+              ) : (
+                presetList.map((p) => (
+                  <View
+                    key={p.id}
+                    style={[styles.presetRow(colors), isTablet && styles.presetRowTablet]}
+                  >
+                    <View style={styles.presetRowText}>
+                      <Text style={[baseStyles.text, styles.presetRowLabel(colors)]} numberOfLines={1}>
+                        {p.label}
+                      </Text>
+                      <Text style={[baseStyles.text, styles.presetRowName(colors)]} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleDeletePreset(p)}
+                      style={[styles.presetDeleteButton(colors), isTablet && styles.presetDeleteButtonTablet]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.error} />
+                      <Text style={[baseStyles.text, styles.presetDeleteText(colors)]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -405,4 +517,122 @@ const styles = {
   everyoneButtonTextTablet: {
     fontSize: 18,
   },
+  presetsButton: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: colors.neutralMedium,
+  }),
+  presetsButtonTablet: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  presetsButtonText: (colors: ThemeColors) => ({
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.text,
+  }),
+  presetsButtonTextTablet: {
+    fontSize: 18,
+  },
+  presetsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end' as const,
+  },
+  presetsModalContent: (colors: ThemeColors) => ({
+    backgroundColor: colors.neutralLight,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+  }),
+  presetsModalContentTablet: {
+    maxWidth: 600,
+    alignSelf: 'center' as const,
+    width: '100%',
+    borderRadius: 24,
+    maxHeight: '85%',
+  },
+  presetsModalHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  presetsModalTitle: (colors: ThemeColors) => ({
+    fontSize: 22,
+    color: colors.primary,
+    fontWeight: 'bold' as const,
+  }),
+  presetsModalTitleTablet: {
+    fontSize: 26,
+  },
+  presetsModalCloseButton: {
+    padding: 8,
+  },
+  presetsModalScroll: {
+    padding: 20,
+    paddingBottom: 32,
+  },
+  presetsEmpty: (colors: ThemeColors) => ({
+    color: colors.textLight,
+    padding: 24,
+    textAlign: 'center' as const,
+  }),
+  presetRow: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.neutralBackground,
+    borderWidth: 1,
+    borderColor: colors.neutralMedium,
+    marginBottom: 12,
+  }),
+  presetRowTablet: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  presetRowText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  presetRowLabel: (colors: ThemeColors) => ({
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.primary,
+    marginBottom: 4,
+  }),
+  presetRowName: (colors: ThemeColors) => ({
+    fontSize: 14,
+    color: colors.textLight,
+  }),
+  presetDeleteButton: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: `${colors.error}18`,
+  }),
+  presetDeleteButtonTablet: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+  },
+  presetDeleteText: (colors: ThemeColors) => ({
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.error,
+    marginLeft: 6,
+  }),
 };

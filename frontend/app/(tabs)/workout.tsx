@@ -2,14 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
 import { baseStyles } from '../../constants/styles';
 import { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
-import { initializeAthletes, refetchAthletes } from '../../data/athletes';
-import { Exercise, Workout } from '../../data/types';
+import { getAllAthletes, initializeAthletes, refetchAthletes } from '../../data/athletes';
+import { Exercise, SpreadsheetData, Workout, WorkoutPreset } from '../../data/types';
+import { getAllWorkoutPresets, getWorkoutPresetCount, MAX_PRESETS_PER_COACH, saveWorkoutPreset } from '../../data/workoutPresets';
 import { addWorkout, getAllWorkouts, getLocationForDate, getWorkoutById, initializeWorkouts, refetchWorkouts, removeExerciseFromWorkout, setLocationForDate, updateExerciseInWorkout, updateWorkout } from '../../data/workouts';
 import { getStretchTemplateIdForWorkoutType, getTemplateById } from '../../data/workoutTemplates';
 import { formatDate, getDateKey, getWorkoutStorageWindow, isToday, normalizeDate } from '../../utils/date';
@@ -123,6 +124,14 @@ export default function WorkoutScreen() {
   const lastReorderIndex = useRef<number | null>(null); // Track last reordered index to prevent frequent updates
   const dragStartY = useRef<number>(0); // Track where the drag started (pageY)
   const exerciseItemRefs = useRef<{ [key: string]: { y: number; height: number } }>({}); // Track exercise item positions
+  // Preset state (coach only)
+  const [savePresetModalVisible, setSavePresetModalVisible] = useState(false);
+  const [presetLabel, setPresetLabel] = useState('');
+  const [presetToSaveWorkout, setPresetToSaveWorkout] = useState<Workout | null>(null);
+  const [presetOverwriteId, setPresetOverwriteId] = useState<string | null>(null);
+  const [loadPresetModalVisible, setLoadPresetModalVisible] = useState(false);
+  const [presetList, setPresetList] = useState<WorkoutPreset[]>([]);
+  const [presetCount, setPresetCount] = useState(0);
 
   useEffect(() => {
     const init = async () => {
@@ -1706,6 +1715,85 @@ export default function WorkoutScreen() {
     }
   };
 
+  // --- Preset handlers (coach only) ---
+  const openSavePresetModal = async (workout: Workout) => {
+    setPresetToSaveWorkout(workout);
+    setPresetLabel('');
+    setPresetOverwriteId(null);
+    const list = await getAllWorkoutPresets();
+    const count = await getWorkoutPresetCount();
+    setPresetList(list);
+    setPresetCount(count);
+    setSavePresetModalVisible(true);
+  };
+
+  const handleSavePreset = async () => {
+    if (!presetToSaveWorkout || !presetLabel.trim()) {
+      Alert.alert('Name required', 'Please enter a name for the preset.');
+      return;
+    }
+    if (presetCount >= MAX_PRESETS_PER_COACH && !presetOverwriteId) {
+      Alert.alert(
+        'Max presets reached',
+        `You have ${MAX_PRESETS_PER_COACH} presets. Choose one to overwrite, or delete a preset in Profile first.`
+      );
+      return;
+    }
+    try {
+      // Use latest workout from cache so we include spreadsheetData (times) if it was persisted
+      const latestWorkout = getWorkoutById(presetToSaveWorkout.id) ?? presetToSaveWorkout;
+      await saveWorkoutPreset(presetLabel.trim(), latestWorkout, presetOverwriteId ?? undefined);
+      setSavePresetModalVisible(false);
+      setPresetToSaveWorkout(null);
+      setPresetLabel('');
+      setPresetOverwriteId(null);
+      Alert.alert('Saved', 'Workout saved as preset.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save preset.');
+    }
+  };
+
+  const openLoadPresetModal = async () => {
+    const list = await getAllWorkoutPresets();
+    setPresetList(list);
+    setLoadPresetModalVisible(true);
+  };
+
+  const handleSpreadsheetDataChange = useCallback(async (wid: string, data: SpreadsheetData) => {
+    try {
+      await updateWorkout(wid, { spreadsheetData: data });
+      setWorkouts(getAllWorkouts());
+    } catch (e) {
+      console.error('Error saving spreadsheet data:', e);
+    }
+  }, []);
+
+  const handleLoadPreset = async (preset: WorkoutPreset) => {
+    try {
+      const athletes = getAllAthletes();
+      const athleteIds = athletes.map(a => a.id);
+      const exercisesWithNewIds = (preset.exercises ?? []).map((ex, i) => ({
+        ...ex,
+        id: `exercise_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
+      }));
+      await addWorkout({
+        name: preset.name,
+        description: preset.description,
+        workoutType: preset.workoutType,
+        viewMode: preset.viewMode,
+        date: selectedDate,
+        exercises: exercisesWithNewIds,
+        athleteIds,
+        templateSections: preset.templateSections,
+        spreadsheetData: preset.spreadsheetData,
+      });
+      setLoadPresetModalVisible(false);
+      setWorkouts(getAllWorkouts());
+      Alert.alert('Loaded', `"${preset.label}" loaded for this date. Athlete times are blank.`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load preset.');
+    }
+  };
 
   return (
     <ScrollView 
@@ -1802,6 +1890,20 @@ export default function WorkoutScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Load Preset - coach only, when date is editable */}
+      {isCoachUser && canEditDate && (
+        <TouchableOpacity
+          onPress={openLoadPresetModal}
+          style={[styles.loadPresetButton, isTablet && styles.loadPresetButtonTablet, { backgroundColor: colors.neutralLight, borderColor: colors.primary }]}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="document-attach-outline" size={isTablet ? 24 : 20} color={colors.primary} />
+          <Text style={[styles.loadPresetButtonText, isTablet && styles.loadPresetButtonTextTablet, { color: colors.primary }]}>
+            Load Preset
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Today Button - when viewing a past date */}
       {!isToday(selectedDate) && (
         <TouchableOpacity
@@ -1880,16 +1982,28 @@ export default function WorkoutScreen() {
             No practice today
           </Text>
           {isEditMode && isCoachUser && canEditDate && (
-            <TouchableOpacity
-              onPress={() => openWorkoutTypeSelector()}
-              style={[styles.addWorkoutButton, isTablet && styles.addWorkoutButtonTablet]}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="add" size={isTablet ? 28 : 24} color={colors.white} />
-              <Text style={[styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet, { color: colors.white }]}>
-                Add Workout
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.addWorkoutRow}>
+              <TouchableOpacity
+                onPress={() => openWorkoutTypeSelector()}
+                style={[styles.addWorkoutButton, isTablet && styles.addWorkoutButtonTablet]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={isTablet ? 28 : 24} color={colors.white} />
+                <Text style={[styles.addWorkoutButtonText, isTablet && styles.addWorkoutButtonTextTablet, { color: colors.white }]}>
+                  Add Workout
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={openLoadPresetModal}
+                style={[styles.loadPresetButton, isTablet && styles.loadPresetButtonTablet, { backgroundColor: colors.neutralLight, borderColor: colors.primary }]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="document-attach-outline" size={isTablet ? 28 : 24} color={colors.primary} />
+                <Text style={[styles.loadPresetButtonText, isTablet && styles.loadPresetButtonTextTablet, { color: colors.primary }]}>
+                  Load Preset
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       ) : (
@@ -2005,6 +2119,20 @@ export default function WorkoutScreen() {
                   </TouchableOpacity>
                 )}
               </View>
+
+              {/* Save as Preset - own row below header */}
+              {isEditMode && isCoachUser && canEditDate && (
+                <TouchableOpacity
+                  onPress={() => openSavePresetModal(workout)}
+                  style={[styles.savePresetRow, isTablet && styles.savePresetRowTablet, { borderColor: colors.primary }]}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="bookmark-outline" size={isTablet ? 22 : 18} color={colors.primary} />
+                  <Text style={[styles.savePresetButtonText, isTablet && styles.savePresetButtonTextTablet, { color: colors.primary }]}>
+                    Save as Preset
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               {/* View Mode Toggle - Only in edit mode, directly under header */}
               {isEditMode && isCoachUser && canEditDate && (
@@ -2122,6 +2250,9 @@ export default function WorkoutScreen() {
                               isTablet={isTablet}
                               isEditMode={isEditMode}
                               athleteRefreshTrigger={athleteListRefreshTrigger}
+                              workoutId={workout.id}
+                              initialSpreadsheetData={workout.spreadsheetData}
+                              onSpreadsheetDataChange={handleSpreadsheetDataChange}
                             />
                           )}
                           {/* Workout exercises with add/edit/remove buttons - same display for all types (workout, longrun, recovery) in list view */}
@@ -3530,6 +3661,130 @@ export default function WorkoutScreen() {
         </View>
       </Modal>
 
+      {/* Save as Preset Modal */}
+      <Modal
+        visible={savePresetModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSavePresetModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet, { backgroundColor: colors.neutralLight }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                Save as Preset
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSavePresetModalVisible(false)}
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScrollView}>
+              <View style={styles.modalInputGroup}>
+                <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                  Preset name
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, isTablet && styles.modalInputTablet]}
+                  value={presetLabel}
+                  onChangeText={setPresetLabel}
+                  placeholder="e.g. Tuesday Track"
+                  placeholderTextColor={colors.neutralMedium}
+                />
+              </View>
+              {presetCount >= MAX_PRESETS_PER_COACH && (
+                <View style={styles.modalInputGroup}>
+                  <Text style={[baseStyles.text, styles.modalLabel, isTablet && styles.modalLabelTablet]}>
+                    You have {MAX_PRESETS_PER_COACH} presets. Overwrite one:
+                  </Text>
+                  <ScrollView style={styles.presetOverwriteList} nestedScrollEnabled>
+                    {presetList.map((p) => (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => setPresetOverwriteId(prev => prev === p.id ? null : p.id)}
+                        style={[
+                          styles.presetOverwriteItem,
+                          presetOverwriteId === p.id && styles.presetOverwriteItemActive,
+                          { borderColor: colors.neutralMedium, backgroundColor: presetOverwriteId === p.id ? colors.primary + '20' : colors.neutralBackground }
+                        ]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[baseStyles.text, { color: colors.text }]} numberOfLines={1}>{p.label}</Text>
+                        {presetOverwriteId === p.id && (
+                          <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={handleSavePreset}
+                style={[styles.modalSaveButton, isTablet && styles.modalSaveButtonTablet]}
+                activeOpacity={0.7}
+                disabled={!presetLabel.trim() || (presetCount >= MAX_PRESETS_PER_COACH && !presetOverwriteId)}
+              >
+                <Text style={[baseStyles.text, styles.modalSaveButtonText, isTablet && styles.modalSaveButtonTextTablet]}>
+                  Save Preset
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Load Preset Modal */}
+      <Modal
+        visible={loadPresetModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLoadPresetModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet, { backgroundColor: colors.neutralLight }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
+                Load Preset
+              </Text>
+              <TouchableOpacity
+                onPress={() => setLoadPresetModalVisible(false)}
+                style={[styles.modalCloseButton, isTablet && styles.modalCloseButtonTablet]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScrollView}>
+              {presetList.length === 0 ? (
+                <Text style={[baseStyles.text, { color: colors.textLight, padding: 20 }]}>
+                  No presets yet. Save a workout as a preset from the workout card.
+                </Text>
+              ) : (
+                presetList.map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => handleLoadPreset(p)}
+                    style={[styles.loadPresetItem, { backgroundColor: colors.neutralBackground, borderColor: colors.neutralMedium }]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[baseStyles.text, styles.loadPresetItemLabel, { color: colors.primary }]} numberOfLines={1}>
+                      {p.label}
+                    </Text>
+                    <Text style={[baseStyles.text, { fontSize: 14, color: colors.textLight }]} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </ScrollView>
   );
 }
@@ -4027,11 +4282,49 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   cardTitleContainer: {
     flex: 1,
   },
+  savePresetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  savePresetRowTablet: {
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  savePresetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  savePresetButtonTablet: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+  },
+  savePresetButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  savePresetButtonTextTablet: {
+    fontSize: 14,
+    marginLeft: 8,
+  },
   editWorkoutButton: {
     padding: 10,
     borderRadius: 10,
     backgroundColor: colors.neutralBackground,
-    marginLeft: 12,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -4134,6 +4427,13 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   viewModeButtonTextActive: {
     color: colors.white,
   },
+  addWorkoutRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 20,
+    alignItems: 'center',
+  },
   addWorkoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4142,7 +4442,6 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 12,
-    marginTop: 20,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -4167,6 +4466,61 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   addWorkoutButtonTextTablet: {
     fontSize: 18,
+  },
+  loadPresetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginBottom: 12,
+  },
+  loadPresetButtonTablet: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    marginBottom: 14,
+  },
+  loadPresetButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  loadPresetButtonTextTablet: {
+    fontSize: 17,
+    marginLeft: 10,
+  },
+  presetOverwriteList: {
+    maxHeight: 180,
+    marginTop: 8,
+  },
+  presetOverwriteItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  presetOverwriteItemActive: {
+    borderWidth: 2,
+  },
+  loadPresetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  loadPresetItemLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
   },
   modalOverlay: {
     flex: 1,

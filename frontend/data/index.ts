@@ -4,9 +4,10 @@
  */
 
 // Export all data types and utilities
-export * from './types';
 export * from './athletes';
-export * from './workouts';
 export * from './locations';
+export * from './types';
+export * from './workoutPresets';
+export * from './workouts';
 export * from './workoutTemplates';
 

@@ -7,7 +7,7 @@
 
 import { supabase } from '../lib/supabase';
 import { getDateKey, getWorkoutStorageWindow, normalizeDate, parseDateOnly } from '../utils/date';
-import { Exercise, Workout } from './types';
+import { Exercise, SpreadsheetData, Workout } from './types';
 
 // In-memory cache of workouts (with exercises)
 let workouts: Workout[] = [];
@@ -61,6 +61,10 @@ function rowToWorkout(row: any, exercises: Exercise[]): Workout {
   const arr = Array.isArray(athleteIds) ? athleteIds : (typeof athleteIds === 'string' ? JSON.parse(athleteIds || '[]') : []);
   const templateSections = row.template_sections;
   const tsArr = Array.isArray(templateSections) ? templateSections : (typeof templateSections === 'string' ? JSON.parse(templateSections || '[]') : []);
+  const spreadsheetData = row.spreadsheet_data;
+  const sd: SpreadsheetData | undefined = spreadsheetData && typeof spreadsheetData === 'object'
+    ? (spreadsheetData as SpreadsheetData)
+    : undefined;
   return {
     id: row.id,
     name: row.name ?? 'Workout',
@@ -73,6 +77,7 @@ function rowToWorkout(row: any, exercises: Exercise[]): Workout {
     athleteIds: arr,
     location: row.location ?? undefined,
     isOyo: row.is_oyo ?? false,
+    spreadsheetData: sd,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -93,6 +98,7 @@ function workoutToRow(workout: Partial<Workout> & { date: Date }, includeId = tr
     is_oyo: workout.isOyo ?? false,
     athlete_ids: JSON.stringify(workout.athleteIds ?? []),
     template_sections: JSON.stringify(workout.templateSections ?? []),
+    spreadsheet_data: workout.spreadsheetData ?? null,
     updated_at: new Date().toISOString(),
   };
   if (includeId && workout.id) row.id = workout.id;
@@ -156,6 +162,8 @@ async function loadWorkouts(): Promise<Workout[]> {
 /**
  * Clean up workouts outside the 3-week window (delete from DB).
  * Deletes workouts before last week Monday and after next week Sunday.
+ * Entire rows are removed, so exercises (workout_exercises) and spreadsheet_data
+ * are automatically deleted with each workout (CASCADE for exercises, column data goes with row).
  */
 async function cleanupOldWorkouts(): Promise<void> {
   const { startDate, endDate } = getWorkoutStorageWindow();
@@ -345,6 +353,7 @@ export async function addWorkout(workout: Omit<Workout, 'id' | 'createdAt' | 'up
     is_oyo: workout.isOyo ?? false,
     athlete_ids: workout.athleteIds ?? [],
     template_sections: workout.templateSections ?? [],
+    spreadsheet_data: workout.spreadsheetData ?? null,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
@@ -394,6 +403,7 @@ export async function updateWorkout(id: string, updates: Partial<Workout> & { lo
   if (updates.templateSections !== undefined) row.template_sections = updates.templateSections;
   if (updates.location !== undefined) row.location = updates.location;
   if (updates.isOyo !== undefined) row.is_oyo = updates.isOyo;
+  if (updates.spreadsheetData !== undefined) row.spreadsheet_data = updates.spreadsheetData;
   const { error: updateError } = await supabase.from('workouts').update(row).eq('id', id);
   if (updateError) {
     console.error('Error updating workout:', updateError);

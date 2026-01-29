@@ -28,6 +28,8 @@ export interface Workout {
   location?: string;
   /** Whether this workout is "On Your Own". Stored in DB. */
   isOyo?: boolean;
+  /** Spreadsheet custom columns and time differences (stored in DB). */
+  spreadsheetData?: SpreadsheetData;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,5 +94,49 @@ export interface OyoSubmission {
   description?: string; // Description/notes from the athlete
   submittedAt: Date; // Timestamp when the submission was made
   createdAt: Date;
+}
+
+/** Spreadsheet custom column (serializable for DB/preset). */
+export interface SpreadsheetColumn {
+  id?: string;
+  label: string;
+  name?: string;
+  distance?: number;
+  percentage?: number;
+  reps?: number;
+  time?: number;
+  recordTime?: boolean;
+  recoveryTime?: string;
+  rank?: 'rookie' | 'veteran' | 'varsity';
+  isCustom?: boolean;
+  repNumber?: number;
+  isMultiRepNoTime?: boolean;
+}
+
+/** Spreadsheet data: custom columns per rank + per-cell time differences. */
+export interface SpreadsheetData {
+  customColumns: {
+    rookie: SpreadsheetColumn[];
+    veteran: SpreadsheetColumn[];
+    varsity: SpreadsheetColumn[];
+  };
+  timeDifferences: Record<string, number | null>;
+}
+
+/** Workout preset: saved workout structure (no date, no athlete times). Coach-defined label, max 15 per coach. */
+export interface WorkoutPreset {
+  id: string;
+  userId: string;
+  label: string;
+  name: string;
+  description?: string;
+  workoutType?: 'workout' | 'longrun' | 'recovery';
+  viewMode?: 'list' | 'spreadsheet';
+  templateSections?: string[];
+  exercises: Exercise[];
+  /** Spreadsheet custom columns and time differences (so preset includes times). */
+  spreadsheetData?: SpreadsheetData;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
