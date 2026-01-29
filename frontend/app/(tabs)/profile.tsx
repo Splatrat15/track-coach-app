@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
+import type { DimensionValue } from 'react-native';
 import { Alert, Modal, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { baseStyles } from '../../constants/styles';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
 import type { WorkoutPreset } from '../../data/types';
@@ -14,7 +16,9 @@ export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const { isDark, colors, toggleTheme } = useTheme();
+  const { currentUser, logout } = useAuth();
   const { userRole, setRole, refreshRole } = useUserRole();
+  const isCoachAccount = currentUser?.role === 'coach';
   const [presetsModalVisible, setPresetsModalVisible] = useState(false);
   const [presetList, setPresetList] = useState<WorkoutPreset[]>([]);
 
@@ -86,7 +90,7 @@ export default function ProfileScreen() {
           <Ionicons name="person" size={isTablet ? 80 : 64} color={colors.primary} />
         </View>
         <Text style={[styles.profileName(colors), isTablet && styles.profileNameTablet]}>
-          Profile
+          {currentUser?.displayName || 'Profile'}
         </Text>
         <Text style={[styles.profileSubtitle(colors), isTablet && styles.profileSubtitleTablet]}>
           Manage your account settings
@@ -122,76 +126,78 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* User Role Section */}
-      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
-        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
-          Account Type
-        </Text>
-        <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
-          Select your role to customize your experience
-        </Text>
+      {/* Account Type - coach accounts only; athletes' role is fixed at sign-up */}
+      {isCoachAccount && (
+        <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+          <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+            Account Type
+          </Text>
+          <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+            Select your role to customize your experience
+          </Text>
 
-        <View style={styles.roleContainer}>
-          <TouchableOpacity
-            style={[
-              styles.roleButton(colors),
-              userRole === 'coach' && styles.roleButtonActive(colors),
-              isTablet && styles.roleButtonTablet,
-            ]}
-            onPress={() => handleRoleChange('coach')}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name="people" 
-              size={isTablet ? 32 : 28} 
-              color={userRole === 'coach' ? colors.white : colors.primary} 
-            />
-            <Text
+          <View style={styles.roleContainer}>
+            <TouchableOpacity
               style={[
-                styles.roleButtonText(colors),
-                userRole === 'coach' && styles.roleButtonTextActive,
-                isTablet && styles.roleButtonTextTablet,
+                styles.roleButton(colors),
+                userRole === 'coach' && styles.roleButtonActive(colors),
+                isTablet && styles.roleButtonTablet,
               ]}
+              onPress={() => handleRoleChange('coach')}
+              activeOpacity={0.7}
             >
-              Coach
-            </Text>
-            {userRole === 'coach' && (
-              <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
-            )}
-          </TouchableOpacity>
+              <Ionicons
+                name="people"
+                size={isTablet ? 32 : 28}
+                color={userRole === 'coach' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.roleButtonText(colors),
+                  userRole === 'coach' && styles.roleButtonTextActive,
+                  isTablet && styles.roleButtonTextTablet,
+                ]}
+              >
+                Coach
+              </Text>
+              {userRole === 'coach' && (
+                <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
+              )}
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.roleButton(colors),
-              userRole === 'athlete' && styles.roleButtonActive(colors),
-              isTablet && styles.roleButtonTablet,
-            ]}
-            onPress={() => handleRoleChange('athlete')}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name="person" 
-              size={isTablet ? 32 : 28} 
-              color={userRole === 'athlete' ? colors.white : colors.primary} 
-            />
-            <Text
+            <TouchableOpacity
               style={[
-                styles.roleButtonText(colors),
-                userRole === 'athlete' && styles.roleButtonTextActive,
-                isTablet && styles.roleButtonTextTablet,
+                styles.roleButton(colors),
+                userRole === 'athlete' && styles.roleButtonActive(colors),
+                isTablet && styles.roleButtonTablet,
               ]}
+              onPress={() => handleRoleChange('athlete')}
+              activeOpacity={0.7}
             >
-              Athlete
-            </Text>
-            {userRole === 'athlete' && (
-              <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
-            )}
-          </TouchableOpacity>
+              <Ionicons
+                name="person"
+                size={isTablet ? 32 : 28}
+                color={userRole === 'athlete' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.roleButtonText(colors),
+                  userRole === 'athlete' && styles.roleButtonTextActive,
+                  isTablet && styles.roleButtonTextTablet,
+                ]}
+              >
+                Athlete
+              </Text>
+              {userRole === 'athlete' && (
+                <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Workout Presets - coach only */}
-      {userRole === 'coach' && (
+      {isCoachAccount && (
         <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
           <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
             Workout Presets
@@ -213,23 +219,25 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {/* Info Section */}
-      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
-        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
-          About
-        </Text>
-        <View style={styles.infoItem}>
-          <Ionicons name="information-circle-outline" size={isTablet ? 24 : 20} color={colors.textLight} />
-          <View style={styles.infoContent}>
-            <Text style={[styles.infoLabel(colors), isTablet && styles.infoLabelTablet]}>
-              Current Role
-            </Text>
-            <Text style={[styles.infoValue(colors), isTablet && styles.infoValueTablet]}>
-              {userRole === 'coach' ? 'Coach' : 'Athlete'}
-            </Text>
+      {/* About / Current Role - coach accounts only */}
+      {isCoachAccount && (
+        <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+          <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+            About
+          </Text>
+          <View style={styles.infoItem}>
+            <Ionicons name="information-circle-outline" size={isTablet ? 24 : 20} color={colors.textLight} />
+            <View style={styles.infoContent}>
+              <Text style={[styles.infoLabel(colors), isTablet && styles.infoLabelTablet]}>
+                Current Role
+              </Text>
+              <Text style={[styles.infoValue(colors), isTablet && styles.infoValueTablet]}>
+                {userRole === 'coach' ? 'Coach' : 'Athlete'}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Everyone Section */}
       <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
@@ -262,7 +270,10 @@ export default function ProfileScreen() {
         </Text>
         <TouchableOpacity
           style={[styles.logoutButton(colors), isTablet && styles.logoutButtonTablet]}
-          onPress={() => router.replace('/')}
+          onPress={async () => {
+            await logout();
+            router.replace('/');
+          }}
           activeOpacity={0.7}
         >
           <Ionicons name="log-out-outline" size={isTablet ? 28 : 24} color={colors.error} />
@@ -595,14 +606,14 @@ const styles = {
     backgroundColor: colors.neutralLight,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '80%',
+    maxHeight: '80%' as DimensionValue,
   }),
   presetsModalContentTablet: {
     maxWidth: 600,
     alignSelf: 'center' as const,
-    width: '100%',
+    width: '100%' as DimensionValue,
     borderRadius: 24,
-    maxHeight: '85%',
+    maxHeight: '85%' as DimensionValue,
   },
   presetsModalHeader: {
     flexDirection: 'row' as const,

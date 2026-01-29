@@ -7,7 +7,8 @@ import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
 import { getAllAthletes, initializeAthletes, refetchAthletes } from '../../data/athletes';
-import { Athlete } from '../../data/types';
+import { getAllCoaches } from '../../data/coaches';
+import { Athlete, Coach } from '../../data/types';
 
 /**
  * Format athlete name as "First Name Last Initial." for display in the everyone list
@@ -19,6 +20,16 @@ function getAthleteNameShort(athlete: Athlete): string {
   return athlete.firstName;
 }
 
+/**
+ * Format coach name for display (First Last)
+ */
+function getCoachName(coach: Coach): string {
+  if (coach.lastName) {
+    return `${coach.firstName} ${coach.lastName}`;
+  }
+  return coach.firstName || coach.username;
+}
+
 export default function EveryoneScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -27,24 +38,30 @@ export default function EveryoneScreen() {
   const { colors } = useTheme();
   const { isCoach } = useUserRole();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    await initializeAthletes();
+    setAthletes(getAllAthletes());
+    const coachList = await getAllCoaches();
+    setCoaches(coachList);
+    setIsLoading(false);
+  }, []);
 
   // Initialize data on mount
   useEffect(() => {
-    const init = async () => {
-      await initializeAthletes();
-      setAthletes(getAllAthletes());
-      setIsLoading(false);
-    };
-    init();
-  }, []);
+    loadData();
+  }, [loadData]);
 
-  // Refresh athletes when screen comes into focus
+  // Refresh athletes and coaches when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       const refresh = async () => {
         await refetchAthletes();
         setAthletes([...getAllAthletes()]);
+        const coachList = await getAllCoaches();
+        setCoaches(coachList);
       };
       refresh();
     }, [])
@@ -92,15 +109,40 @@ export default function EveryoneScreen() {
         <View style={s.sectionHeader}>
           <Ionicons name="people" size={isTablet ? 28 : 24} color={colors.primary} />
           <Text style={[s.sectionTitle, isTablet && s.sectionTitleTablet]}>
-            Coaches
+            Coaches ({coaches.length})
           </Text>
         </View>
-        <View style={[s.emptyCard, isTablet && s.emptyCardTablet]}>
-          <Ionicons name="people-outline" size={isTablet ? 48 : 40} color={colors.textMuted} />
-          <Text style={[s.emptyText, isTablet && s.emptyTextTablet]}>
-            No coaches yet
-          </Text>
-        </View>
+        {coaches.length === 0 ? (
+          <View style={[s.emptyCard, isTablet && s.emptyCardTablet]}>
+            <Ionicons name="people-outline" size={isTablet ? 48 : 40} color={colors.textMuted} />
+            <Text style={[s.emptyText, isTablet && s.emptyTextTablet]}>
+              No coaches yet. Coaches appear here after signing up.
+            </Text>
+          </View>
+        ) : (
+          <View style={s.listContainer}>
+            {coaches.map((coach) => (
+              <View
+                key={coach.id}
+                style={[s.listItem, isTablet && s.listItemTablet]}
+              >
+                <View style={s.listItemContent}>
+                  <View style={[s.avatar, isTablet && s.avatarTablet]}>
+                    <Ionicons name="people" size={isTablet ? 24 : 20} color={colors.primary} />
+                  </View>
+                  <View>
+                    <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
+                      {getCoachName(coach)}
+                    </Text>
+                    <Text style={[s.coachUsername, isTablet && s.coachUsernameTablet]}>
+                      @{coach.username}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Athletes Section */}
@@ -325,6 +367,14 @@ function getStyles(colors: ThemeColors) {
     },
     listItemTextTablet: {
       fontSize: 18,
+    },
+    coachUsername: {
+      fontSize: 13,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    coachUsernameTablet: {
+      fontSize: 14,
     },
     badge: {
       paddingHorizontal: 10,

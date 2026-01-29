@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { getAttendanceStorageWindow } from '../utils/date';
+import { hashPassword } from './coaches';
 import { clearAllBoardMessages } from './messages';
 import { Athlete, AttendanceRecord } from './types';
 import { setUserRole } from './user';
@@ -29,6 +30,9 @@ function supabaseRowToAthlete(row: any): Athlete {
     gender: row.gender || null,
     rank: row.rank || null,
     goal1600m: row.goal1600m || row.goal_1600m || null,
+    username: row.username ?? null,
+    email: row.email ?? null,
+    passwordHash: row.password_hash ?? null,
     createdAt: new Date(row.createdAt || row.created_at),
     updatedAt: new Date(row.updatedAt || row.updated_at),
   };
@@ -42,29 +46,35 @@ let useSnakeCase = false;
  * Uses the appropriate column format based on what the database expects
  */
 function athleteToSupabaseRow(athlete: Athlete): any {
+  const baseSnake = {
+    id: athlete.id,
+    first_name: athlete.firstName,
+    last_name: athlete.lastName,
+    gender: athlete.gender,
+    rank: athlete.rank,
+    goal_1600m: athlete.goal1600m,
+    username: athlete.username ?? undefined,
+    email: athlete.email ?? undefined,
+    password_hash: athlete.passwordHash ?? undefined,
+    created_at: athlete.createdAt.toISOString(),
+    updated_at: athlete.updatedAt.toISOString(),
+  };
   if (useSnakeCase) {
-    return {
-      id: athlete.id,
-      first_name: athlete.firstName,
-      last_name: athlete.lastName,
-      gender: athlete.gender,
-      rank: athlete.rank,
-      goal_1600m: athlete.goal1600m,
-      created_at: athlete.createdAt.toISOString(),
-      updated_at: athlete.updatedAt.toISOString(),
-    };
-  } else {
-    return {
-      id: athlete.id,
-      firstName: athlete.firstName,
-      lastName: athlete.lastName,
-      gender: athlete.gender,
-      rank: athlete.rank,
-      goal1600m: athlete.goal1600m,
-      createdAt: athlete.createdAt.toISOString(),
-      updatedAt: athlete.updatedAt.toISOString(),
-    };
+    return baseSnake;
   }
+  return {
+    id: athlete.id,
+    firstName: athlete.firstName,
+    lastName: athlete.lastName,
+    gender: athlete.gender,
+    rank: athlete.rank,
+    goal1600m: athlete.goal1600m,
+    username: athlete.username ?? undefined,
+    email: athlete.email ?? undefined,
+    passwordHash: athlete.passwordHash ?? undefined,
+    createdAt: athlete.createdAt.toISOString(),
+    updatedAt: athlete.updatedAt.toISOString(),
+  };
 }
 
 /**
@@ -161,6 +171,24 @@ export function getAthleteName(athlete: Athlete): string {
 }
 
 /**
+ * Find athlete by username (for login). Queries Supabase directly.
+ */
+export async function getAthleteByUsername(username: string): Promise<Athlete | null> {
+  const u = username.trim();
+  if (!u) return null;
+  const { data, error } = await supabase
+    .from('athletes')
+    .select('*')
+    .eq('username', u)
+    .maybeSingle();
+  if (error) {
+    console.error('Error fetching athlete by username:', error);
+    return null;
+  }
+  return data ? supabaseRowToAthlete(data) : null;
+}
+
+/**
  * Sort athletes by last name alphabetically
  * Single source of truth for athlete sorting
  * This function mutates and sorts the array in place, then returns it
@@ -242,44 +270,61 @@ export function getAthletesByGender(gender: 'male' | 'female'): Athlete[] {
   return athletes.filter(athlete => athlete.gender === gender);
 }
 
+/** Params for adding an athlete; password is hashed and stored as passwordHash when provided. */
+export type AddAthleteParams = Omit<Athlete, 'id' | 'createdAt' | 'updatedAt'> & { password?: string };
+
 /**
- * Add a new athlete
+ * Add a new athlete. If password is provided, username and email are required and hashed password is stored.
  */
-export async function addAthlete(athlete: Omit<Athlete, 'id' | 'createdAt' | 'updatedAt'>): Promise<Athlete> {
+export async function addAthlete(athlete: AddAthleteParams): Promise<Athlete> {
   // Check for duplicates by first and last name
-  const duplicate = athletes.find(a => 
-    a.firstName.toLowerCase() === athlete.firstName.toLowerCase() && 
+  const duplicate = athletes.find(a =>
+    a.firstName.toLowerCase() === athlete.firstName.toLowerCase() &&
     a.lastName.toLowerCase() === athlete.lastName.toLowerCase()
   );
   if (duplicate) {
     throw new Error('Athlete with this name already exists');
   }
-  
+
   const now = new Date();
+  let passwordHash: string | null = athlete.passwordHash ?? null;
+  if (athlete.password != null && athlete.password !== '') {
+    passwordHash = await hashPassword(athlete.password);
+  }
+  const { password: _p, ...rest } = athlete;
   const newAthlete: Athlete = {
-    ...athlete,
+    ...rest,
+    passwordHash: passwordHash ?? undefined,
     id: `athlete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     createdAt: now,
     updatedAt: now,
   };
 
-  // Insert into Supabase
+  // Insert into Supabase (omit undefined so we don't send them for nullable columns)
+  const row = athleteToSupabaseRow(newAthlete);
+  const insertRow: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (v !== undefined) insertRow[k] = v;
+  }
   const { data, error } = await supabase
     .from('athletes')
-    .insert(athleteToSupabaseRow(newAthlete))
+    .insert(insertRow)
     .select()
     .single();
 
   if (error) {
+    if (error.code === '23505') {
+      if (error.message.includes('username')) throw new Error('Username already taken');
+      if (error.message.includes('email')) throw new Error('Email already registered');
+    }
     console.error('Error adding athlete to Supabase:', error);
     throw new Error(`Failed to add athlete: ${error.message}`);
   }
 
-  // Update local cache
-  athletes.push(newAthlete);
+  const inserted = supabaseRowToAthlete(data);
+  athletes.push(inserted);
   athletes = sortAthletesByLastName(athletes);
-  
-  return newAthlete;
+  return inserted;
 }
 
 /**

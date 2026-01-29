@@ -10,6 +10,22 @@ export interface Athlete {
   gender: 'male' | 'female' | null; // null means not set yet
   rank: 'rookie' | 'veteran' | 'varsity' | 'veteran/varsity' | null; // null means not set yet
   goal1600m: string | null; // Goal mile time in MM:SS format (e.g., "4:20"), null means not set yet
+  /** Login: set for athletes who signed up with username/email/password */
+  username?: string | null;
+  email?: string | null;
+  passwordHash?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Coach account (sign-up stored in DB). Password stored hashed. */
+export interface Coach {
+  id: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  passwordHash: string;
   createdAt: Date;
   updatedAt: Date;
 }

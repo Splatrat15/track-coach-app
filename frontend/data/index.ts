@@ -5,6 +5,7 @@
 
 // Export all data types and utilities
 export * from './athletes';
+export * from './coaches';
 export { initializeLocations } from './locations';
 export * from './types';
 export * from './workoutPresets';

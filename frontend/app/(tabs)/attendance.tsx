@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import type { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
-import { addAthlete, deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords, refetchAthletes, refetchAttendanceRecords } from '../../data/athletes';
+import { deleteAthlete, getAllAthletes, getAthleteName, getAttendanceRecordsByDate, initializeAthletes, initializeAttendanceRecords, refetchAthletes, refetchAttendanceRecords } from '../../data/athletes';
 import { Athlete } from '../../data/types';
 import { formatDate, getAttendanceStorageWindow, getDateKey, isToday, normalizeDate } from '../../utils/date';
 
@@ -18,17 +18,8 @@ export default function AttendanceScreen() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(() => normalizeDate(new Date()));
   const [isRemoveMode, setIsRemoveMode] = useState(false);
-  const [isAddMode, setIsAddMode] = useState(false);
-  const [newAthleteFirstName, setNewAthleteFirstName] = useState('');
-  const [newAthleteLastName, setNewAthleteLastName] = useState('');
-  const [newAthleteRank, setNewAthleteRank] = useState<'rookie' | 'veteran' | 'varsity' | 'veteran/varsity' | null>(null);
-  const [newAthleteGender, setNewAthleteGender] = useState<'male' | 'female' | null>(null);
-  const [newAthleteGoal1600m, setNewAthleteGoal1600m] = useState('');
-  const [showRankDropdown, setShowRankDropdown] = useState(false);
-  const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
-  const inputContainerRef = useRef<View>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { isCoach: isCoachUser, refreshRole } = useUserRole();
 
@@ -72,14 +63,13 @@ export default function AttendanceScreen() {
         await refetchAthletes();
         await refetchAttendanceRecords();
         setAthletes([...getAllAthletes()]);
-        // If user is no longer a coach, disable add/remove modes
-        if (!isCoachUser && (isAddMode || isRemoveMode)) {
-          setIsAddMode(false);
+        // If user is no longer a coach, disable remove mode
+        if (!isCoachUser && isRemoveMode) {
           setIsRemoveMode(false);
         }
       };
       refresh();
-    }, [isAddMode, isRemoveMode, isCoachUser, refreshRole])
+    }, [isRemoveMode, isCoachUser, refreshRole])
   );
 
   // Date navigation (back = earlier, forward = toward today)
@@ -151,73 +141,6 @@ export default function AttendanceScreen() {
     return { present, absent };
   }, [sortedAthletes, selectedDate]);
 
-  // Validate time format (M:SS or MM:SS, e.g., "6:03" or "06:03")
-  const validateTimeFormat = (time: string): boolean => {
-    const timeRegex = /^\d{1,2}:\d{2}$/;
-    if (!timeRegex.test(time)) {
-      return false;
-    }
-    const [minutes, seconds] = time.split(':').map(Number);
-    return minutes >= 0 && seconds >= 0 && seconds < 60;
-  };
-
-  // Handle adding a new athlete
-  const handleAddAthlete = async () => {
-    const firstName = newAthleteFirstName.trim();
-    const lastName = newAthleteLastName.trim();
-    const goal1600m = newAthleteGoal1600m.trim();
-    
-    if (!firstName) {
-      Alert.alert('Error', 'Please enter a first name');
-      return;
-    }
-    
-    if (!lastName) {
-      Alert.alert('Error', 'Please enter a last name');
-      return;
-    }
-    
-    if (!newAthleteGender) {
-      Alert.alert('Error', 'Please select a gender');
-      return;
-    }
-    
-    if (!newAthleteRank) {
-      Alert.alert('Error', 'Please select a rank');
-      return;
-    }
-    
-    if (!goal1600m) {
-      Alert.alert('Error', 'Please enter a Goal 1600m time');
-      return;
-    }
-    
-    if (!validateTimeFormat(goal1600m)) {
-      Alert.alert('Error', 'Please enter a valid time format (M:SS or MM:SS, e.g., 6:03)');
-      return;
-    }
-    
-    try {
-      await addAthlete({ 
-        firstName, 
-        lastName: lastName || '', 
-        gender: newAthleteGender,
-        rank: newAthleteRank,
-        goal1600m: goal1600m
-      });
-      const updatedAthletes = getAllAthletes();
-      setAthletes([...updatedAthletes]);
-      setNewAthleteFirstName('');
-      setNewAthleteLastName('');
-      setNewAthleteRank(null);
-      setNewAthleteGender(null);
-      setNewAthleteGoal1600m('');
-      setIsAddMode(false);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to add athlete');
-    }
-  };
-
   // Handle removing an athlete
   const handleRemoveAthlete = async (athleteId: string, athleteName: string) => {
     Alert.alert(
@@ -247,23 +170,6 @@ export default function AttendanceScreen() {
   const handleAthletePress = (athleteId: string) => {
     router.push(`/(tabs)/attendance/${athleteId}?date=${getDateKey(selectedDate)}`);
   };
-
-  // Scroll to input when it's focused
-  const handleInputFocus = () => {
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 300);
-  };
-
-  // Scroll to input when add mode is activated
-  useEffect(() => {
-    if (isAddMode) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [isAddMode]);
-
 
   if (isLoading) {
     return (
@@ -401,7 +307,7 @@ export default function AttendanceScreen() {
 
           {sortedAthletes.length === 0 ? (
             <Text style={[s.emptyText, isTablet && s.emptyTextTablet]}>
-              No athletes yet. Add your first athlete below.
+              No athletes yet. Athletes can sign up from the login screen.
             </Text>
           ) : (
             sortedAthletes.map((athlete) => {
@@ -445,40 +351,20 @@ export default function AttendanceScreen() {
             })
           )}
 
-          {/* Add/Remove Buttons at Bottom - Coach Only */}
+          {/* Remove button at bottom - Coach only */}
           {isCoachUser && (
             <View style={[s.athletesFooter, isTablet && s.athletesFooterTablet]}>
-              {!isAddMode && !isRemoveMode && (
-                <View style={s.athletesActions}>
-                  <TouchableOpacity
-                    onPress={() => setIsAddMode(true)}
-                    style={[s.actionButton, s.addButton, isTablet && s.actionButtonTablet]}
-                  >
-                    <Ionicons name="add" size={isTablet ? 24 : 20} color={colors.white} />
-                    <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Add</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setIsRemoveMode(true)}
-                    style={[s.actionButton, s.removeButton, isTablet && s.actionButtonTablet]}
-                  >
-                    <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
-                    <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              {(isAddMode || isRemoveMode) && (
+              {!isRemoveMode ? (
                 <TouchableOpacity
-                  onPress={() => {
-                    setIsAddMode(false);
-                    setIsRemoveMode(false);
-                    setNewAthleteFirstName('');
-                    setNewAthleteLastName('');
-                    setNewAthleteRank(null);
-                    setNewAthleteGender(null);
-                    setNewAthleteGoal1600m('');
-                    setShowRankDropdown(false);
-                    setShowGenderDropdown(false);
-                  }}
+                  onPress={() => setIsRemoveMode(true)}
+                  style={[s.actionButton, s.removeButton, isTablet && s.actionButtonTablet]}
+                >
+                  <Ionicons name="trash-outline" size={isTablet ? 24 : 20} color={colors.white} />
+                  <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Remove</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setIsRemoveMode(false)}
                   style={[s.actionButton, s.cancelButton, isTablet && s.actionButtonTablet]}
                 >
                   <Text style={[s.actionButtonText, isTablet && s.actionButtonTextTablet]}>Cancel</Text>
@@ -486,170 +372,6 @@ export default function AttendanceScreen() {
               )}
             </View>
           )}
-
-          {/* Add Athlete Input - Coach Only */}
-          {isAddMode && isCoachUser && (
-            <View 
-              ref={inputContainerRef}
-              style={[s.addAthleteContainer, isTablet && s.addAthleteContainerTablet]}
-            >
-              <View style={s.inputsColumn}>
-                <View style={s.nameInputsRow}>
-                  <TextInput
-                    style={[s.nameInput, s.firstNameInput, isTablet && s.nameInputTablet]}
-                    placeholder="First name *"
-                    placeholderTextColor={colors.textMuted}
-                    value={newAthleteFirstName}
-                    onChangeText={setNewAthleteFirstName}
-                    onFocus={handleInputFocus}
-                    autoFocus
-                  />
-                  <TextInput
-                    style={[s.nameInput, s.lastNameInput, isTablet && s.nameInputTablet]}
-                    placeholder="Last name *"
-                    placeholderTextColor={colors.textMuted}
-                    value={newAthleteLastName}
-                    onChangeText={setNewAthleteLastName}
-                    onFocus={handleInputFocus}
-                  />
-                </View>
-                
-                <TouchableOpacity
-                  style={[s.dropdownButton, isTablet && s.dropdownButtonTablet]}
-                  onPress={() => setShowGenderDropdown(true)}
-                >
-                  <Text style={[
-                    s.dropdownButtonText,
-                    !newAthleteGender && s.dropdownButtonTextPlaceholder,
-                    isTablet && s.dropdownButtonTextTablet
-                  ]}>
-                    {newAthleteGender ? newAthleteGender.charAt(0).toUpperCase() + newAthleteGender.slice(1) : 'Gender *'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={colors.text} />
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[s.dropdownButton, isTablet && s.dropdownButtonTablet]}
-                  onPress={() => setShowRankDropdown(true)}
-                >
-                  <Text style={[
-                    s.dropdownButtonText,
-                    !newAthleteRank && s.dropdownButtonTextPlaceholder,
-                    isTablet && s.dropdownButtonTextTablet
-                  ]}>
-                    {newAthleteRank ? newAthleteRank.charAt(0).toUpperCase() + newAthleteRank.slice(1).replace('/', '/') : 'Rank *'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={colors.text} />
-                </TouchableOpacity>
-                
-                <TextInput
-                  style={[s.nameInput, s.goalInput, isTablet && s.nameInputTablet]}
-                  placeholder="Goal 1600m (e.g., 6:03) *"
-                  placeholderTextColor={colors.textMuted}
-                  value={newAthleteGoal1600m}
-                  onChangeText={setNewAthleteGoal1600m}
-                  onFocus={handleInputFocus}
-                />
-              </View>
-              
-              <TouchableOpacity
-                onPress={handleAddAthlete}
-                style={[s.submitButton, isTablet && s.submitButtonTablet]}
-              >
-                <Ionicons name="checkmark" size={isTablet ? 28 : 24} color={colors.white} />
-              </TouchableOpacity>
-            </View>
-          )}
-          
-          {/* Gender Dropdown Modal */}
-          <Modal
-            visible={showGenderDropdown}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setShowGenderDropdown(false)}
-          >
-            <TouchableOpacity
-              style={s.modalOverlay}
-              activeOpacity={1}
-              onPress={() => setShowGenderDropdown(false)}
-            >
-              <View style={[s.modalContent, isTablet && s.modalContentTablet]}>
-                <Text style={[s.modalTitle, isTablet && s.modalTitleTablet]}>
-                  Select Gender
-                </Text>
-                {(['male', 'female'] as const).map((gender) => (
-                  <TouchableOpacity
-                    key={gender}
-                    style={[
-                      s.modalOption,
-                      newAthleteGender === gender && s.modalOptionSelected,
-                      isTablet && s.modalOptionTablet
-                    ]}
-                    onPress={() => {
-                      setNewAthleteGender(gender);
-                      setShowGenderDropdown(false);
-                    }}
-                  >
-                    <Text style={[
-                      s.modalOptionText,
-                      newAthleteGender === gender && s.modalOptionTextSelected,
-                      isTablet && s.modalOptionTextTablet
-                    ]}>
-                      {gender.charAt(0).toUpperCase() + gender.slice(1)}
-                    </Text>
-                    {newAthleteGender === gender && (
-                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={colors.secondary} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </TouchableOpacity>
-          </Modal>
-          
-          {/* Rank Dropdown Modal */}
-          <Modal
-            visible={showRankDropdown}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setShowRankDropdown(false)}
-          >
-            <TouchableOpacity
-              style={s.modalOverlay}
-              activeOpacity={1}
-              onPress={() => setShowRankDropdown(false)}
-            >
-              <View style={[s.modalContent, isTablet && s.modalContentTablet]}>
-                <Text style={[s.modalTitle, isTablet && s.modalTitleTablet]}>
-                  Select Rank
-                </Text>
-                {(['rookie', 'veteran', 'varsity', 'veteran/varsity'] as const).map((rank) => (
-                  <TouchableOpacity
-                    key={rank}
-                    style={[
-                      s.modalOption,
-                      newAthleteRank === rank && s.modalOptionSelected,
-                      isTablet && s.modalOptionTablet
-                    ]}
-                    onPress={() => {
-                      setNewAthleteRank(rank);
-                      setShowRankDropdown(false);
-                    }}
-                  >
-                    <Text style={[
-                      s.modalOptionText,
-                      newAthleteRank === rank && s.modalOptionTextSelected,
-                      isTablet && s.modalOptionTextTablet
-                    ]}>
-                      {rank.charAt(0).toUpperCase() + rank.slice(1).replace('/', '/')}
-                    </Text>
-                    {newAthleteRank === rank && (
-                      <Ionicons name="checkmark" size={isTablet ? 24 : 20} color={colors.secondary} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </TouchableOpacity>
-          </Modal>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -672,7 +394,6 @@ function getStyles(colors: ThemeColors) {
     contentContainerTablet: {
       maxWidth: 1200,
       alignSelf: 'center' as const,
-      width: '100%',
       paddingHorizontal: 48,
       paddingBottom: 32,
     },
