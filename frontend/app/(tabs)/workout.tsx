@@ -4,7 +4,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Spreadsheet from '../../components/workoutTypes/Spreadsheet';
-import { Colors, baseStyles } from '../../constants/styles';
+import { baseStyles } from '../../constants/styles';
+import { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
 import { initializeAthletes, refetchAthletes } from '../../data/athletes';
@@ -44,6 +45,7 @@ export default function WorkoutScreen() {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const isTablet = width >= 768;
+  const styles = getStyles(colors);
   const isSmallDevice = width < 400; // Use abbreviations on small devices (< 400px width)
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -1777,7 +1779,7 @@ export default function WorkoutScreen() {
             isTablet && styles.editButtonProminentTablet,
             isEditMode && styles.editButtonProminentActive,
             !canEditDate && styles.editButtonProminentDisabled,
-            isEditMode && { backgroundColor: colors.primary },
+            { backgroundColor: isEditMode ? colors.primary : colors.neutralLight, borderColor: colors.primary, shadowColor: colors.primary },
             canEditDate && !isEditMode && { borderColor: colors.primary }
           ]}
           activeOpacity={0.7}
@@ -1792,7 +1794,8 @@ export default function WorkoutScreen() {
             styles.editButtonProminentText,
             isTablet && styles.editButtonProminentTextTablet,
             isEditMode && styles.editButtonProminentTextActive,
-            !canEditDate && !isEditMode && styles.editButtonProminentTextDisabled
+            !canEditDate && !isEditMode && styles.editButtonProminentTextDisabled,
+            { color: isEditMode ? colors.white : colors.primary }
           ]}>
             {isEditMode ? 'Done Editing' : 'Edit Workout'}
           </Text>
@@ -2025,7 +2028,8 @@ export default function WorkoutScreen() {
                         styles.viewModeButton,
                         width >= 768 && styles.viewModeButtonTablet,
                         width >= 1024 && styles.viewModeButtonLarge,
-                        effectiveViewMode === 'list' && styles.viewModeButtonActive
+                        effectiveViewMode === 'list' && styles.viewModeButtonActive,
+                        { backgroundColor: effectiveViewMode === 'list' ? colors.primary : colors.neutralLight, borderColor: effectiveViewMode === 'list' ? colors.primary : colors.neutralMedium }
                       ]}
                       activeOpacity={0.7}
                     >
@@ -2033,7 +2037,8 @@ export default function WorkoutScreen() {
                         styles.viewModeButtonText,
                         width >= 768 && styles.viewModeButtonTextTablet,
                         width >= 1024 && styles.viewModeButtonTextLarge,
-                        effectiveViewMode === 'list' && styles.viewModeButtonTextActive
+                        effectiveViewMode === 'list' && styles.viewModeButtonTextActive,
+                        { color: effectiveViewMode === 'list' ? colors.white : colors.text }
                       ]}>
                         List
                       </Text>
@@ -2044,7 +2049,8 @@ export default function WorkoutScreen() {
                         styles.viewModeButton,
                         width >= 768 && styles.viewModeButtonTablet,
                         width >= 1024 && styles.viewModeButtonLarge,
-                        effectiveViewMode === 'spreadsheet' && styles.viewModeButtonActive
+                        effectiveViewMode === 'spreadsheet' && styles.viewModeButtonActive,
+                        { backgroundColor: effectiveViewMode === 'spreadsheet' ? colors.primary : colors.neutralLight, borderColor: effectiveViewMode === 'spreadsheet' ? colors.primary : colors.neutralMedium }
                       ]}
                       activeOpacity={0.7}
                     >
@@ -2052,7 +2058,8 @@ export default function WorkoutScreen() {
                         styles.viewModeButtonText,
                         width >= 768 && styles.viewModeButtonTextTablet,
                         width >= 1024 && styles.viewModeButtonTextLarge,
-                        effectiveViewMode === 'spreadsheet' && styles.viewModeButtonTextActive
+                        effectiveViewMode === 'spreadsheet' && styles.viewModeButtonTextActive,
+                        { color: effectiveViewMode === 'spreadsheet' ? colors.white : colors.text }
                       ]}>
                         Spreadsheet
                       </Text>
@@ -2226,7 +2233,7 @@ export default function WorkoutScreen() {
                                         )}
                                         <TouchableOpacity
                                           onPress={canEditWorkoutExercise ? () => openWorkoutExerciseEditor(workout.id, exercise) : undefined}
-                                          style={[styles.rankWorkoutContent, canEditWorkoutExercise && styles.exerciseContentEditable]}
+                                          style={[styles.rankWorkoutContent, canEditWorkoutExercise && styles.exerciseContentEditable, { backgroundColor: colors.neutralLight }]}
                                           activeOpacity={canEditWorkoutExercise ? 0.7 : 1}
                                           disabled={!canEditWorkoutExercise}
                                         >
@@ -2234,7 +2241,7 @@ export default function WorkoutScreen() {
                                             <Text style={[baseStyles.text, styles.rankWorkoutName]}>
                                               {displayName}
                                             </Text>
-                                            <Text style={[baseStyles.text, styles.rankWorkoutDuration]}>
+                                            <Text style={[baseStyles.text, styles.rankWorkoutDuration, { backgroundColor: colors.neutralLight, color: colors.primary }]}>
                                               {isRepsBased ? reps : `${totalDuration} min`}
                                             </Text>
                                           </View>
@@ -2295,7 +2302,7 @@ export default function WorkoutScreen() {
                                           <Text style={[baseStyles.text, styles.groupName]}>
                                             {exercise.name}
                                           </Text>
-                                          <Text style={[baseStyles.text, styles.groupDuration]}>
+                                          <Text style={[baseStyles.text, styles.groupDuration, { backgroundColor: colors.neutralLight, color: colors.primary, shadowColor: colors.primary }]}>
                                             {exercise.duration ? Math.floor(exercise.duration / 60) : 0} min
                                           </Text>
                                         </View>
@@ -2350,7 +2357,7 @@ export default function WorkoutScreen() {
                                 {isStridesExpanded && (
                                   <View style={styles.stridesContent}>
                                     {section.strides.map((stride, idx) => (
-                                      <View key={stride.id || idx} style={styles.strideItem}>
+                                      <View key={stride.id || idx} style={[styles.strideItem, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium }]}>
                                         <Text style={[baseStyles.text, styles.strideGroup]}>
                                           {stride.group ? stride.group.charAt(0).toUpperCase() + stride.group.slice(1) : ''}:
                                         </Text>
@@ -2444,7 +2451,7 @@ export default function WorkoutScreen() {
                                       <Text style={[baseStyles.text, styles.groupName]}>
                                         {exercise.name}
                                       </Text>
-                                      <Text style={[baseStyles.text, styles.groupDuration]}>
+                                      <Text style={[baseStyles.text, styles.groupDuration, { backgroundColor: colors.neutralLight, color: colors.primary, shadowColor: colors.primary }]}>
                                         {exercise.duration ? Math.floor(exercise.duration / 60) : 0} min
                                       </Text>
                                     </View>
@@ -2515,7 +2522,7 @@ export default function WorkoutScreen() {
                                         return (
                                           <View style={styles.rankSpecificContainer}>
                                             {rookies && (
-                                              <View style={styles.rankSpecificItem}>
+                                              <View style={[styles.rankSpecificItem, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium }]}>
                                                 <Text style={[baseStyles.text, styles.rankSpecificLabel]}>
                                                   Rookies:
                                                 </Text>
@@ -2525,7 +2532,7 @@ export default function WorkoutScreen() {
                                               </View>
                                             )}
                                             {veterans && (
-                                              <View style={styles.rankSpecificItem}>
+                                              <View style={[styles.rankSpecificItem, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium }]}>
                                                 <Text style={[baseStyles.text, styles.rankSpecificLabel]}>
                                                   Veterans:
                                                 </Text>
@@ -2535,7 +2542,7 @@ export default function WorkoutScreen() {
                                               </View>
                                             )}
                                             {varsity && (
-                                              <View style={styles.rankSpecificItem}>
+                                              <View style={[styles.rankSpecificItem, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium }]}>
                                                 <Text style={[baseStyles.text, styles.rankSpecificLabel]}>
                                                   Varsity:
                                                 </Text>
@@ -2607,7 +2614,7 @@ export default function WorkoutScreen() {
         onRequestClose={() => setExerciseModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet, { backgroundColor: colors.neutralLight }]}>
             <View style={styles.modalHeader}>
               <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
                 {editingExercise ? 'Edit Exercise' : 'Add Exercise'}
@@ -2825,7 +2832,7 @@ export default function WorkoutScreen() {
         onRequestClose={() => setWorkoutExerciseModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet, { backgroundColor: colors.neutralLight }]}>
             <View style={styles.modalHeader}>
               <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
                 {editingWorkoutExercise ? 'Edit Workout' : 'Add Workout'}
@@ -3255,7 +3262,7 @@ export default function WorkoutScreen() {
                         <View key={index} style={styles.paceSegmentContainer}>
                           <View style={styles.paceSegmentRow}>
                             <TextInput
-                              style={[styles.paceSegmentTimeInput, isTablet && styles.paceSegmentTimeInputTablet]}
+                              style={[styles.paceSegmentTimeInput, isTablet && styles.paceSegmentTimeInputTablet, { backgroundColor: colors.neutralLight, borderColor: colors.neutralMedium, color: colors.text }]}
                               value={segment.time}
                               onChangeText={(text) => {
                                 const newSegments = [...workoutExercisePaceSegments];
@@ -3400,7 +3407,7 @@ export default function WorkoutScreen() {
         onRequestClose={() => setWorkoutTypeModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
+          <View style={[styles.modalContent, isTablet && styles.modalContentTablet, { backgroundColor: colors.neutralLight }]}>
             <View style={styles.modalHeader}>
               <Text style={[baseStyles.heading, styles.modalTitle, isTablet && styles.modalTitleTablet]}>
                 {editingWorkout ? 'Edit Workout' : 'Create Workout'}
@@ -3527,7 +3534,7 @@ export default function WorkoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     padding: 16,
   },
@@ -3544,7 +3551,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     paddingBottom: 20,
     borderBottomWidth: 2,
-    borderBottomColor: Colors.neutralMedium,
+    borderBottomColor: colors.neutralMedium,
   },
   headerTablet: {
     marginBottom: 36,
@@ -3555,7 +3562,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     letterSpacing: -0.5,
     fontWeight: '800',
-    color: Colors.primary,
+    color: colors.primary,
   },
   titleTablet: {
     fontSize: 52,
@@ -3563,7 +3570,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: Colors.textLight,
+    color: colors.textLight,
     fontWeight: '500',
     letterSpacing: 0.2,
     marginTop: 4,
@@ -3572,17 +3579,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   card: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 20,
     padding: 24,
     marginBottom: 20,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 8,
     borderWidth: 1,
-    borderColor: Colors.neutralLight,
+    borderColor: colors.neutralLight,
   },
   cardTablet: {
     padding: 40,
@@ -3594,7 +3601,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 16,
     letterSpacing: -0.3,
-    color: Colors.primary,
+    color: colors.primary,
   },
   cardText: {
     fontSize: 16,
@@ -3607,16 +3614,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 28,
     paddingVertical: 18,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 20,
     paddingHorizontal: 16,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 8,
     borderWidth: 2,
-    borderColor: Colors.neutralLight,
+    borderColor: colors.neutralLight,
   },
   dateNavigationTablet: {
     marginBottom: 36,
@@ -3627,8 +3634,8 @@ const styles = StyleSheet.create({
   arrowButton: {
     padding: 14,
     borderRadius: 14,
-    backgroundColor: Colors.neutralBackground,
-    shadowColor: Colors.black,
+    backgroundColor: colors.neutralLight,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -3637,7 +3644,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
   },
   arrowButtonTablet: {
     padding: 18,
@@ -3646,7 +3653,7 @@ const styles = StyleSheet.create({
   },
   arrowButtonDisabled: {
     opacity: 0.4,
-    backgroundColor: Colors.neutralLight,
+    backgroundColor: colors.neutralLight,
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -3658,7 +3665,7 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 26,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
@@ -3666,11 +3673,11 @@ const styles = StyleSheet.create({
     fontSize: 36,
   },
   locationCard: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 20,
     padding: 24,
     marginBottom: 20,
-    shadowColor: Colors.secondary,
+    shadowColor: colors.secondary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
@@ -3678,12 +3685,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderLeftWidth: 5,
-    borderLeftColor: Colors.secondary,
+    borderLeftColor: colors.secondary,
     borderWidth: 1,
     borderRightWidth: 1,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: Colors.neutralLight,
+    borderColor: colors.neutralLight,
   },
   locationCardTablet: {
     padding: 28,
@@ -3700,7 +3707,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 6,
-    color: Colors.secondary,
+    color: colors.secondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -3710,7 +3717,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 17,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 24,
     fontWeight: '500',
   },
@@ -3722,8 +3729,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginLeft: 16,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
-    shadowColor: Colors.black,
+    backgroundColor: colors.neutralBackground,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
@@ -3736,12 +3743,12 @@ const styles = StyleSheet.create({
   },
   todayButton: {
     alignSelf: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 12,
     marginBottom: 20,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -3754,7 +3761,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   todayButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -3772,11 +3779,11 @@ const styles = StyleSheet.create({
     marginTop: 36,
   },
   sectionHeader: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: 14,
     padding: 18,
     marginBottom: 20,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
@@ -3797,7 +3804,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: Colors.white,
+    color: colors.white,
     flex: 1,
     letterSpacing: -0.3,
   },
@@ -3812,7 +3819,7 @@ const styles = StyleSheet.create({
   },
   sectionDivider: {
     height: 2,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     marginBottom: 24,
     marginTop: 8,
     borderRadius: 1,
@@ -3821,7 +3828,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     paddingBottom: 24,
     borderBottomWidth: 1.5,
-    borderBottomColor: Colors.neutralBackground,
+    borderBottomColor: colors.neutralBackground,
     paddingLeft: 4,
   },
   exerciseItemLast: {
@@ -3833,13 +3840,13 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '700',
     marginBottom: 8,
-    color: Colors.text,
+    color: colors.text,
     letterSpacing: -0.2,
   },
   exerciseSubHeader: {
     fontSize: 17,
     marginBottom: 14,
-    color: Colors.primary,
+    color: colors.primary,
     opacity: 0.85,
     fontWeight: '600',
   },
@@ -3851,17 +3858,17 @@ const styles = StyleSheet.create({
   },
   exerciseDetail: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     opacity: 0.75,
     fontWeight: '500',
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   exerciseNotes: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     opacity: 0.65,
     fontStyle: 'italic',
     marginTop: 8,
@@ -3873,28 +3880,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     padding: 14,
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
+    borderLeftColor: colors.primary,
   },
   groupName: {
     fontSize: 19,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     flex: 1,
     letterSpacing: -0.2,
   },
   groupDuration: {
     fontSize: 19,
     fontWeight: '700',
-    color: Colors.primary,
-    backgroundColor: Colors.white,
+    color: colors.primary,
+    backgroundColor: colors.neutralLight,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 10,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
@@ -3902,7 +3909,7 @@ const styles = StyleSheet.create({
   },
   paceType: {
     fontSize: 16,
-    color: Colors.secondary,
+    color: colors.secondary,
     opacity: 0.9,
     fontStyle: 'italic',
     fontWeight: '600',
@@ -3915,12 +3922,12 @@ const styles = StyleSheet.create({
   },
   stridesHeader: {
     padding: 16,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1.5,
     borderColor: 'rgba(30, 58, 95, 0.1)',
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 4,
@@ -3934,7 +3941,7 @@ const styles = StyleSheet.create({
   stridesTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     letterSpacing: -0.2,
   },
   stridesContent: {
@@ -3949,28 +3956,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 10,
     marginBottom: 8,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 3,
     elevation: 1,
     borderWidth: 1,
-    borderColor: Colors.neutralBackground,
+    borderColor: colors.neutralBackground,
   },
   strideGroup: {
     fontSize: 17,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
     letterSpacing: -0.1,
   },
   strideCount: {
     fontSize: 18,
-    color: Colors.secondary,
+    color: colors.secondary,
     fontWeight: '700',
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -3985,28 +3992,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.white,
     borderRadius: 10,
     marginBottom: 8,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 3,
     elevation: 1,
     borderWidth: 1,
-    borderColor: Colors.neutralBackground,
+    borderColor: colors.neutralBackground,
   },
   rankSpecificLabel: {
     fontSize: 17,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
     letterSpacing: -0.1,
   },
   rankSpecificValue: {
     fontSize: 18,
-    color: Colors.secondary,
+    color: colors.secondary,
     fontWeight: '700',
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -4023,9 +4030,9 @@ const styles = StyleSheet.create({
   editWorkoutButton: {
     padding: 10,
     borderRadius: 10,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     marginLeft: 12,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
@@ -4042,10 +4049,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
   },
   viewModeToggleContainerTablet: {
     marginTop: 0,
@@ -4064,7 +4071,7 @@ const styles = StyleSheet.create({
   viewModeLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
     marginRight: 10,
     minWidth: 40,
   },
@@ -4087,9 +4094,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderWidth: 1.5,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     minWidth: 80,
     minHeight: 36,
     alignItems: 'center',
@@ -4110,13 +4117,13 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   viewModeButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   viewModeButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   viewModeButtonTextTablet: {
     fontSize: 15,
@@ -4125,18 +4132,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   viewModeButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
   },
   addWorkoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 12,
     marginTop: 20,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -4152,7 +4159,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   addWorkoutButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8,
@@ -4167,12 +4174,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     maxHeight: '90%',
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
@@ -4196,7 +4203,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: Colors.primary,
+    color: colors.primary,
     flex: 1,
   },
   modalTitleTablet: {
@@ -4209,7 +4216,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -4227,18 +4234,18 @@ const styles = StyleSheet.create({
   modalLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 8,
   },
   modalLabelTablet: {
     fontSize: 18,
   },
   modalInput: {
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralLight,
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -4262,9 +4269,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralLight,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4274,30 +4281,30 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   workoutTypeButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   workoutTypeButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   workoutTypeButtonTextTablet: {
     fontSize: 18,
   },
   workoutTypeButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
   },
   modalSaveButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -4309,7 +4316,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   modalSaveButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -4323,28 +4330,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
   },
   smallToggleButtonActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   smallToggleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   editButtonProminent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 14,
     marginBottom: 20,
     borderWidth: 2,
-    borderColor: Colors.primary,
-    shadowColor: Colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -4359,27 +4366,27 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   editButtonProminentActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   editButtonProminentDisabled: {
     opacity: 0.5,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
   },
   editButtonProminentText: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.primary,
+    color: colors.primary,
     letterSpacing: 0.3,
   },
   editButtonProminentTextTablet: {
     fontSize: 18,
   },
   editButtonProminentTextActive: {
-    color: Colors.white,
+    color: colors.white,
   },
   editButtonProminentTextDisabled: {
-    color: Colors.neutralMedium,
+    color: colors.neutralMedium,
   },
   exerciseItemEditable: {
     flexDirection: 'row',
@@ -4403,13 +4410,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
     marginTop: 16,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     borderStyle: 'dashed',
     gap: 8,
   },
@@ -4422,19 +4429,19 @@ const styles = StyleSheet.create({
   addExerciseButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.primary,
+    color: colors.primary,
     letterSpacing: 0.2,
   },
   addExerciseButtonTextTablet: {
     fontSize: 18,
   },
   exerciseItemDragging: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     borderRadius: 12,
     padding: 12,
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -4443,11 +4450,11 @@ const styles = StyleSheet.create({
   },
   exerciseItemDragOver: {
     borderTopWidth: 3,
-    borderTopColor: Colors.primary,
+    borderTopColor: colors.primary,
   },
   insertionIndicator: {
     height: 4,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     marginVertical: 8,
     borderRadius: 2,
     opacity: 0.6,
@@ -4463,23 +4470,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     alignItems: 'center',
     justifyContent: 'center',
   },
   toggleButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   toggleButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   toggleButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
   },
   rankButtonsContainer: {
@@ -4492,9 +4499,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralLight,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     minWidth: 100,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4506,16 +4513,16 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   rankButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   rankButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   rankButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
   },
   paceButtonsContainer: {
@@ -4530,9 +4537,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4543,16 +4550,16 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   paceButtonActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
   paceButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   paceButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
   },
   paceSegmentContainer: {
@@ -4568,13 +4575,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 100,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
-    color: Colors.text,
-    backgroundColor: Colors.white,
+    color: colors.text,
+    backgroundColor: colors.neutralLight,
   },
   paceSegmentTimeInputTablet: {
     paddingHorizontal: 20,
@@ -4599,9 +4606,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     borderRadius: 8,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4612,20 +4619,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   paceSegmentPaceButtonActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
   paceSegmentPaceButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
   },
   paceSegmentPaceButtonTextTablet: {
     fontSize: 15,
   },
   paceSegmentPaceButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
   },
   removeSegmentButton: {
@@ -4638,16 +4645,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     borderStyle: 'dashed',
     marginTop: 8,
   },
   addSegmentButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.primary,
+    color: colors.primary,
   },
   rankWorkoutBox: {
     marginBottom: 16,
@@ -4657,13 +4664,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   rankWorkoutContent: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 12,
     padding: 16,
     paddingLeft: 20,
     borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
-    shadowColor: Colors.black,
+    borderLeftColor: colors.primary,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 3,
@@ -4679,39 +4686,39 @@ const styles = StyleSheet.create({
   rankWorkoutName: {
     fontSize: 19,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     letterSpacing: -0.2,
     flex: 1,
   },
   rankWorkoutDuration: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.primary,
-    backgroundColor: Colors.white,
+    color: colors.primary,
+    backgroundColor: colors.neutralLight,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.neutralBackground,
+    borderColor: colors.neutralBackground,
   },
   rankWorkoutPace: {
     fontSize: 15,
-    color: Colors.secondary,
+    color: colors.secondary,
     fontWeight: '600',
     marginTop: 4,
   },
   rankInputSection: {
     marginBottom: 24,
     padding: 16,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralLight,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
   },
   rankSectionTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: Colors.primary,
+    color: colors.primary,
     marginBottom: 16,
     letterSpacing: -0.2,
   },

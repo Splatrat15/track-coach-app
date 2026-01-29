@@ -4,7 +4,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, baseStyles } from '../../../constants/styles';
+import { baseStyles } from '../../../constants/styles';
+import { ThemeColors } from '../../../constants/themes';
+import { useTheme } from '../../../contexts/ThemeContext';
 import {
     getAthleteById,
     getAthleteName,
@@ -17,8 +19,10 @@ export default function AthleteOyoSubmissionScreen() {
   const router = useRouter();
   const { id, date } = useLocalSearchParams<{ id: string; date?: string }>();
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
+  const styles = getStyles(colors);
   
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
@@ -244,7 +248,7 @@ export default function AthleteOyoSubmissionScreen() {
         onPress={handleGoBack}
         style={[styles.goBackButton, { paddingTop: insets.top + 8 }]}
       >
-        <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+        <Ionicons name="arrow-back" size={24} color={colors.primary} />
         <Text style={styles.goBackText}>Go Back</Text>
       </TouchableOpacity>
 
@@ -299,7 +303,7 @@ export default function AthleteOyoSubmissionScreen() {
                         onPress={handleRemovePhoto}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name="close-circle" size={32} color={Colors.error} />
+                        <Ionicons name="close-circle" size={32} color={colors.error} />
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -308,7 +312,7 @@ export default function AthleteOyoSubmissionScreen() {
                       onPress={handleShowImageOptions}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="camera-outline" size={isTablet ? 32 : 28} color={Colors.primary} />
+                      <Ionicons name="camera-outline" size={isTablet ? 32 : 28} color={colors.primary} />
                       <Text style={[baseStyles.text, styles.addPhotoText, isTablet && styles.addPhotoTextTablet]}>
                         Add Photo
                       </Text>
@@ -326,7 +330,7 @@ export default function AthleteOyoSubmissionScreen() {
                     value={description}
                     onChangeText={setDescription}
                     placeholder="Add notes about your workout…"
-                    placeholderTextColor={Colors.neutralMedium}
+                    placeholderTextColor={colors.neutralMedium}
                     multiline
                     numberOfLines={4}
                     textAlignVertical="top"
@@ -362,7 +366,7 @@ export default function AthleteOyoSubmissionScreen() {
               const isDuplicateImage = submission && getDuplicateImageSubmissionIds().has(submission.id);
               return isDuplicateImage ? (
                 <View style={styles.duplicateImageBanner}>
-                  <Ionicons name="warning" size={isTablet ? 24 : 20} color={Colors.error} />
+                  <Ionicons name="warning" size={isTablet ? 24 : 20} color={colors.error} />
                   <Text style={[baseStyles.text, styles.duplicateImageBannerText, isTablet && styles.duplicateImageBannerTextTablet]}>
                     This image has been used.
                   </Text>
@@ -426,7 +430,7 @@ export default function AthleteOyoSubmissionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
@@ -435,6 +439,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginTop: 50,
+    color: colors.text,
   },
   goBackButton: {
     flexDirection: 'row',
@@ -446,7 +451,7 @@ const styles = StyleSheet.create({
   },
   goBackText: {
     fontSize: 16,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: '600',
   },
   nameContainer: {
@@ -456,7 +461,7 @@ const styles = StyleSheet.create({
   },
   athleteName: {
     fontSize: 32,
-    color: Colors.primary,
+    color: colors.primary,
     textAlign: 'center',
   },
   athleteNameTablet: {
@@ -464,7 +469,7 @@ const styles = StyleSheet.create({
   },
   submissionNote: {
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginTop: 8,
     fontStyle: 'italic',
   },
@@ -473,7 +478,7 @@ const styles = StyleSheet.create({
   },
   viewOnlyNote: {
     fontSize: 14,
-    color: Colors.error,
+    color: colors.error,
     marginTop: 8,
     fontWeight: '600',
   },
@@ -487,7 +492,7 @@ const styles = StyleSheet.create({
   },
   viewOnlyText: {
     fontSize: 20,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
   },
   viewOnlyTextTablet: {
@@ -495,7 +500,7 @@ const styles = StyleSheet.create({
   },
   viewOnlySubtext: {
     fontSize: 16,
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   viewOnlySubtextTablet: {
     fontSize: 18,
@@ -518,7 +523,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 12,
   },
   labelTablet: {
@@ -531,7 +536,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
   },
   photo: {
     width: '100%',
@@ -542,9 +547,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -553,10 +558,10 @@ const styles = StyleSheet.create({
   addPhotoButton: {
     width: '100%',
     aspectRatio: 4 / 3,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
@@ -568,7 +573,7 @@ const styles = StyleSheet.create({
   addPhotoText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.primary,
+    color: colors.primary,
   },
   addPhotoTextTablet: {
     fontSize: 18,
@@ -577,13 +582,13 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   descriptionInput: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     minHeight: 100,
   },
   descriptionInputTablet: {
@@ -593,9 +598,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   descriptionDisplay: {
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     borderRadius: 12,
     padding: 16,
     minHeight: 100,
@@ -607,7 +612,7 @@ const styles = StyleSheet.create({
   },
   descriptionText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 24,
   },
   descriptionTextTablet: {
@@ -615,13 +620,13 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   submitButton: {
-    backgroundColor: Colors.secondary,
+    backgroundColor: colors.secondary,
     paddingVertical: 20,
     paddingHorizontal: 60,
     borderRadius: 12,
     minWidth: 200,
     alignItems: 'center',
-    shadowColor: Colors.secondary,
+    shadowColor: colors.secondary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -639,14 +644,14 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.white,
+    color: colors.white,
   },
   submitButtonTextTablet: {
     fontSize: 32,
   },
   alreadySubmitted: {
     fontSize: 24,
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -655,7 +660,7 @@ const styles = StyleSheet.create({
   },
   submissionTime: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     opacity: 0.7,
     textAlign: 'center',
     marginBottom: 24,
@@ -668,18 +673,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: Colors.error + '18',
+    backgroundColor: colors.error + '18',
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: Colors.error + '40',
+    borderColor: colors.error + '40',
   },
   duplicateImageBannerText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.error,
+    color: colors.error,
   },
   duplicateImageBannerTextTablet: {
     fontSize: 18,
@@ -691,7 +696,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
     padding: 32,
     width: '80%',
@@ -707,14 +712,14 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.primary,
+    color: colors.primary,
     textAlign: 'center',
   },
   modalTextTablet: {
     fontSize: 28,
   },
   modalButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 8,
@@ -728,7 +733,7 @@ const styles = StyleSheet.create({
     minWidth: 150,
   },
   modalButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
   },

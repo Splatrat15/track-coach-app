@@ -3,7 +3,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, baseStyles } from '../../../constants/styles';
+import { baseStyles } from '../../../constants/styles';
+import { ThemeColors } from '../../../constants/themes';
+import { useTheme } from '../../../contexts/ThemeContext';
 import {
     deleteAttendanceRecord,
     findOrCreateAttendanceRecord,
@@ -19,8 +21,10 @@ export default function AthleteCheckInScreen() {
   const router = useRouter();
   const { id, date: dateParam } = useLocalSearchParams<{ id: string; date?: string }>();
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
+  const styles = getStyles(colors);
   
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -128,7 +132,7 @@ export default function AthleteCheckInScreen() {
         onPress={handleGoBack}
         style={[styles.goBackButton, { paddingTop: insets.top + 8 }]}
       >
-        <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+        <Ionicons name="arrow-back" size={24} color={colors.primary} />
         <Text style={styles.goBackText}>Go Back</Text>
       </TouchableOpacity>
 
@@ -217,7 +221,7 @@ export default function AthleteCheckInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
@@ -226,6 +230,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginTop: 50,
+    color: colors.text,
   },
   goBackButton: {
     flexDirection: 'row',
@@ -237,7 +242,7 @@ const styles = StyleSheet.create({
   },
   goBackText: {
     fontSize: 16,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: '600',
   },
   nameContainer: {
@@ -247,7 +252,7 @@ const styles = StyleSheet.create({
   },
   athleteName: {
     fontSize: 32,
-    color: Colors.primary,
+    color: colors.primary,
     textAlign: 'center',
   },
   athleteNameTablet: {
@@ -255,7 +260,7 @@ const styles = StyleSheet.create({
   },
   viewDateLabel: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     opacity: 0.8,
     marginTop: 8,
   },
@@ -266,7 +271,7 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   checkInButton: {
-    backgroundColor: Colors.secondary,
+    backgroundColor: colors.secondary,
     paddingVertical: 20,
     paddingHorizontal: 60,
     borderRadius: 12,
@@ -280,7 +285,7 @@ const styles = StyleSheet.create({
     minWidth: 300,
   },
   checkInButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 24,
     fontWeight: 'bold',
   },
@@ -289,7 +294,7 @@ const styles = StyleSheet.create({
   },
   alreadyCheckedIn: {
     fontSize: 24,
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -297,7 +302,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
   },
   undoButton: {
-    backgroundColor: Colors.text,
+    backgroundColor: colors.text,
     paddingVertical: 16,
     paddingHorizontal: 40,
     borderRadius: 12,
@@ -311,7 +316,7 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   undoButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -320,7 +325,7 @@ const styles = StyleSheet.create({
   },
   checkInTime: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     opacity: 0.7,
     textAlign: 'center',
     marginTop: 16,
@@ -331,7 +336,7 @@ const styles = StyleSheet.create({
   },
   readOnlyStatus: {
     fontSize: 22,
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
   },
   readOnlyStatusTablet: {
@@ -344,7 +349,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
     padding: 32,
     width: '80%',
@@ -360,14 +365,14 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.primary,
+    color: colors.primary,
     textAlign: 'center',
   },
   modalTextTablet: {
     fontSize: 28,
   },
   modalButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 8,
@@ -381,7 +386,7 @@ const styles = StyleSheet.create({
     minWidth: 150,
   },
   modalButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
   },

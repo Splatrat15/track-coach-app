@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Modal, PanResponder, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Colors, baseStyles } from '../../constants/styles';
+import { baseStyles } from '../../constants/styles';
+import { ThemeColors } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAllAthletes, getEffectiveRank, initializeAthletes } from '../../data/athletes';
 import { Athlete } from '../../data/types';
@@ -221,6 +222,7 @@ function generateWorkoutColumns(rank: 'rookie' | 'veteran' | 'varsity'): Workout
 
 export default function Spreadsheet({ workoutType, isTablet, isEditMode = false, athleteRefreshTrigger }: SpreadsheetProps) {
   const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedRank, setSelectedRank] = useState<'rookie' | 'veteran' | 'varsity' | null>(null);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
@@ -1520,7 +1522,7 @@ export default function Spreadsheet({ workoutType, isTablet, isEditMode = false,
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   spreadsheetContainer: {
     marginTop: 8,
     marginHorizontal: 0, // Remove horizontal margins on mobile to stretch edge-to-edge
@@ -1563,7 +1565,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginRight: 10,
-    color: Colors.text,
+    color: colors.text,
     letterSpacing: -0.2,
     minWidth: 50,
   },
@@ -1571,12 +1573,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderWidth: 2,
-    borderColor: Colors.neutralBackground,
+    borderColor: colors.neutralBackground,
     marginRight: 6,
     marginBottom: 6,
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 3,
@@ -1593,25 +1595,25 @@ const styles = StyleSheet.create({
     minWidth: 90,
   },
   filterButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-    shadowColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 4,
   },
   filterButtonText: {
     fontSize: 13,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
     letterSpacing: 0.1,
   },
   filterButtonTextActive: {
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
   },
   table: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderTopLeftRadius: 0, // No radius on left edge for mobile
     borderTopRightRadius: 14,
     borderBottomLeftRadius: 0, // No radius on left edge for mobile
@@ -1619,7 +1621,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     borderWidth: 1,
     borderColor: 'rgba(30, 58, 95, 0.1)',
-    shadowColor: Colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -1644,7 +1646,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 0,
     position: 'relative',
     zIndex: 10,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     overflow: 'visible',
     marginLeft: 0, // Ensure it touches left edge
     paddingLeft: 0, // No left padding
@@ -1655,7 +1657,7 @@ const styles = StyleSheet.create({
   },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.15)',
     height: 44, // Fixed height for consistent alignment
@@ -1689,7 +1691,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRightWidth: 0,
     borderBottomWidth: 0,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     height: 88, // Match sum of two header rows (44 + 44)
     minHeight: 88,
@@ -1702,7 +1704,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     fontSize: 14,
-    color: Colors.white,
+    color: colors.white,
     fontWeight: '700',
     letterSpacing: -0.2,
   },
@@ -1789,7 +1791,7 @@ const styles = StyleSheet.create({
   },
   lastNameCell: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.neutralBackground,
+    borderBottomColor: colors.neutralBackground,
   },
   dataCell: {
     width: 80,
@@ -1845,7 +1847,7 @@ const styles = StyleSheet.create({
   },
   tableCell: {
     fontSize: 14,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '500',
     letterSpacing: -0.1,
   },
@@ -1869,8 +1871,8 @@ const styles = StyleSheet.create({
   },
   nameCellDragging: {
     opacity: 0.8,
-    backgroundColor: Colors.white,
-    shadowColor: Colors.primary,
+    backgroundColor: colors.neutralLight,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -1899,10 +1901,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.white,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.neutralBackground,
+    borderColor: colors.neutralBackground,
     minHeight: 36,
     width: '100%',
   },
@@ -1913,7 +1915,7 @@ const styles = StyleSheet.create({
   },
   dropdownButtonText: {
     fontSize: 14,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
     marginRight: 6,
     fontFamily: 'monospace',
@@ -1928,13 +1930,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderRadius: 20,
     padding: 24,
     width: '85%',
     maxWidth: 400,
     maxHeight: '80%',
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
@@ -1960,16 +1962,16 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.black,
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
     borderWidth: 1,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
   },
   modalCloseButtonTablet: {
     width: 40,
@@ -1979,7 +1981,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: Colors.primary,
+    color: colors.primary,
     flex: 1,
     textAlign: 'center',
   },
@@ -2000,7 +2002,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     marginBottom: 8,
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralBackground,
     borderWidth: 1,
     borderColor: 'transparent',
   },
@@ -2010,13 +2012,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   modalOptionSelected: {
-    backgroundColor: Colors.white,
-    borderColor: Colors.secondary,
+    backgroundColor: colors.neutralLight,
+    borderColor: colors.secondary,
     borderWidth: 2,
   },
   modalOptionText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
     fontFamily: 'monospace',
   },
@@ -2024,7 +2026,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   modalOptionTextSelected: {
-    color: Colors.secondary,
+    color: colors.secondary,
     fontWeight: '700',
   },
   emptyStateContainer: {
@@ -2038,7 +2040,7 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '500',
     textAlign: 'center',
     opacity: 0.7,
@@ -2057,7 +2059,7 @@ const styles = StyleSheet.create({
     width: 90,
     minWidth: 90,
     height: 44,
-    backgroundColor: Colors.secondary,
+    backgroundColor: colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 2,
@@ -2065,7 +2067,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     paddingHorizontal: 8,
-    shadowColor: Colors.secondary,
+    shadowColor: colors.secondary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -2079,7 +2081,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addColumnButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -2099,20 +2101,20 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderWidth: 2,
-    borderColor: Colors.neutralMedium,
+    borderColor: colors.neutralMedium,
     borderRadius: 4,
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   checkboxChecked: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   checkboxLabel: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '500',
   },
   checkboxLabelTablet: {
@@ -2120,7 +2122,7 @@ const styles = StyleSheet.create({
   },
   modalHint: {
     fontSize: 14,
-    color: Colors.neutralMedium,
+    color: colors.neutralMedium,
     fontStyle: 'italic',
     marginTop: 8,
     marginBottom: 16,
@@ -2135,7 +2137,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: Colors.neutralBackground,
+    borderTopColor: colors.neutralBackground,
   },
   modalButton: {
     paddingHorizontal: 24,
@@ -2145,18 +2147,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalButtonCancel: {
-    backgroundColor: Colors.neutralBackground,
+    backgroundColor: colors.neutralLight,
   },
   modalButtonSave: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   modalButtonTextSave: {
-    color: Colors.white,
+    color: colors.white,
   },
   modalInputGroup: {
     marginBottom: 20,
@@ -2164,21 +2166,21 @@ const styles = StyleSheet.create({
   modalLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 8,
   },
   modalLabelTablet: {
     fontSize: 18,
   },
   modalInput: {
-    backgroundColor: Colors.white,
+    backgroundColor: colors.neutralLight,
     borderWidth: 1,
-    borderColor: Colors.neutralBackground,
+    borderColor: colors.neutralBackground,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
   },
   modalInputTablet: {
     paddingVertical: 14,
@@ -2186,7 +2188,7 @@ const styles = StyleSheet.create({
   },
   infoValue: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
   },
   infoValueTablet: {
