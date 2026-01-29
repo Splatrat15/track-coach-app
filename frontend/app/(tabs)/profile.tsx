@@ -252,6 +252,27 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Log out */}
+      <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+        <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+          Account
+        </Text>
+        <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+          Sign out and return to the login screen
+        </Text>
+        <TouchableOpacity
+          style={[styles.logoutButton(colors), isTablet && styles.logoutButtonTablet]}
+          onPress={() => router.replace('/')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="log-out-outline" size={isTablet ? 28 : 24} color={colors.error} />
+          <Text style={[styles.logoutButtonText(colors), isTablet && styles.logoutButtonTextTablet]}>
+            Log out
+          </Text>
+          <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
       {/* Presets Management Modal */}
       <Modal
         visible={presetsModalVisible}
@@ -515,6 +536,30 @@ const styles = {
     color: colors.text,
   }),
   everyoneButtonTextTablet: {
+    fontSize: 18,
+  },
+  logoutButton: (colors: ThemeColors) => ({
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.neutralBackground,
+    borderWidth: 2,
+    borderColor: colors.neutralMedium,
+  }),
+  logoutButtonTablet: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  logoutButtonText: (colors: ThemeColors) => ({
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.error,
+  }),
+  logoutButtonTextTablet: {
     fontSize: 18,
   },
   presetsButton: (colors: ThemeColors) => ({
