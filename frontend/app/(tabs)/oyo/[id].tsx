@@ -434,6 +434,7 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
+    backgroundColor: colors.neutralBackground,
   },
   loadingText: {
     fontSize: 18,
