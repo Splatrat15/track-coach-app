@@ -1,12 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Tabs, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { Platform, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const { userRole } = useUserRole();
+  const { userRole, refreshRole } = useUserRole();
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshRole();
+    }, [refreshRole])
+  );
 
   return (
     <Tabs
