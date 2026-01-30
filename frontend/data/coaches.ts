@@ -7,6 +7,9 @@ import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
 import { Coach } from './types';
 
+/** Initial security phrase for new coaches; coaches can change it in Profile. */
+export const DEFAULT_SECURITY_PHRASE = 'DVTFNumber1';
+
 /**
  * Convert Supabase row to Coach type (handles snake_case columns)
  */
@@ -18,6 +21,7 @@ function rowToCoach(row: any): Coach {
     username: row.username ?? '',
     email: row.email ?? '',
     passwordHash: row.password_hash ?? '',
+    securityPhraseHash: row.security_phrase_hash ?? '',
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -64,6 +68,7 @@ export async function addCoach(params: {
   if (!params.password) throw new Error('Password is required');
 
   const passwordHash = await hashPassword(params.password);
+  const securityPhraseHash = await hashPassword(DEFAULT_SECURITY_PHRASE);
   const id = `coach_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = new Date();
 
@@ -74,6 +79,7 @@ export async function addCoach(params: {
     username,
     email,
     password_hash: passwordHash,
+    security_phrase_hash: securityPhraseHash,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
@@ -149,4 +155,60 @@ export async function getCoachByEmail(email: string): Promise<Coach | null> {
     return null;
   }
   return data ? rowToCoach(data) : null;
+}
+
+/**
+ * Find coach by id (e.g. for profile security phrase). Returns null if not found.
+ */
+export async function getCoachById(id: string): Promise<Coach | null> {
+  const { data, error } = await supabase
+    .from('coaches')
+    .select('*')
+    .eq('id', id.trim())
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching coach by id:', error);
+    return null;
+  }
+  return data ? rowToCoach(data) : null;
+}
+
+/**
+ * Verify a plain security phrase against the coach's stored hash.
+ */
+export async function verifySecurityPhrase(plainPhrase: string, storedHash: string): Promise<boolean> {
+  if (!storedHash) return false;
+  const hash = await hashPassword(plainPhrase);
+  return hash === storedHash;
+}
+
+/**
+ * Update coach's security phrase. Verifies current phrase first.
+ * Returns true on success, false if current phrase is wrong or update failed.
+ */
+export async function updateCoachSecurityPhrase(
+  coachId: string,
+  currentPhrase: string,
+  newPhrase: string
+): Promise<boolean> {
+  const coach = await getCoachById(coachId);
+  if (!coach) return false;
+  const valid = await verifySecurityPhrase(currentPhrase, coach.securityPhraseHash);
+  if (!valid) return false;
+  const newPhraseTrimmed = newPhrase.trim();
+  if (!newPhraseTrimmed) return false;
+  const newHash = await hashPassword(newPhraseTrimmed);
+  const { error } = await supabase
+    .from('coaches')
+    .update({
+      security_phrase_hash: newHash,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', coachId);
+  if (error) {
+    console.error('Error updating coach security phrase:', error);
+    return false;
+  }
+  return true;
 }

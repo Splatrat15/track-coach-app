@@ -18,7 +18,7 @@ export interface Athlete {
   updatedAt: Date;
 }
 
-/** Coach account (sign-up stored in DB). Password stored hashed. */
+/** Coach account (sign-up stored in DB). Password and security phrase stored hashed. */
 export interface Coach {
   id: string;
   firstName: string;
@@ -26,6 +26,8 @@ export interface Coach {
   username: string;
   email: string;
   passwordHash: string;
+  /** SHA-256 hash of coach security phrase (for confirmation/breach recovery). */
+  securityPhraseHash: string;
   createdAt: Date;
   updatedAt: Date;
 }

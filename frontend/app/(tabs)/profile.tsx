@@ -2,11 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import type { DimensionValue } from 'react-native';
-import { Alert, Modal, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { baseStyles } from '../../constants/styles';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
+import { updateCoachSecurityPhrase } from '../../data/coaches';
 import type { WorkoutPreset } from '../../data/types';
 import { UserRole } from '../../data/user';
 import { deleteWorkoutPreset, getAllWorkoutPresets } from '../../data/workoutPresets';
@@ -21,6 +22,11 @@ export default function ProfileScreen() {
   const isCoachAccount = currentUser?.role === 'coach';
   const [presetsModalVisible, setPresetsModalVisible] = useState(false);
   const [presetList, setPresetList] = useState<WorkoutPreset[]>([]);
+  const [securityPhraseModalVisible, setSecurityPhraseModalVisible] = useState(false);
+  const [currentPhrase, setCurrentPhrase] = useState('');
+  const [newPhrase, setNewPhrase] = useState('');
+  const [confirmPhrase, setConfirmPhrase] = useState('');
+  const [securityPhraseError, setSecurityPhraseError] = useState('');
 
   // Refresh user role when screen comes into focus
   useFocusEffect(
@@ -76,6 +82,41 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const openSecurityPhraseModal = () => {
+    setCurrentPhrase('');
+    setNewPhrase('');
+    setConfirmPhrase('');
+    setSecurityPhraseError('');
+    setSecurityPhraseModalVisible(true);
+  };
+
+  const handleChangeSecurityPhrase = async () => {
+    setSecurityPhraseError('');
+    if (!currentPhrase.trim()) {
+      setSecurityPhraseError('Enter your current security phrase.');
+      return;
+    }
+    if (!newPhrase.trim()) {
+      setSecurityPhraseError('Enter a new security phrase.');
+      return;
+    }
+    if (newPhrase !== confirmPhrase) {
+      setSecurityPhraseError('New phrase and confirmation do not match.');
+      return;
+    }
+    if (!currentUser?.coachId) {
+      setSecurityPhraseError('Not signed in as a coach.');
+      return;
+    }
+    const ok = await updateCoachSecurityPhrase(currentUser.coachId, currentPhrase.trim(), newPhrase.trim());
+    if (ok) {
+      setSecurityPhraseModalVisible(false);
+      Alert.alert('Done', 'Your security phrase has been updated.');
+    } else {
+      setSecurityPhraseError('Current phrase is incorrect. Try again or change it after a breach.');
+    }
   };
 
   return (
@@ -219,6 +260,29 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* Security phrase - coach only */}
+      {isCoachAccount && (
+        <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+          <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+            Security Phrase
+          </Text>
+          <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+            Change your security phrase here if you suspect a breach. Keep it private.
+          </Text>
+          <TouchableOpacity
+            style={[styles.presetsButton(colors), isTablet && styles.presetsButtonTablet]}
+            onPress={openSecurityPhraseModal}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="shield-checkmark" size={isTablet ? 28 : 24} color={colors.primary} />
+            <Text style={[styles.presetsButtonText(colors), isTablet && styles.presetsButtonTextTablet]}>
+              Change Security Phrase
+            </Text>
+            <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* About / Current Role - coach accounts only */}
       {isCoachAccount && (
         <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
@@ -283,6 +347,76 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
+
+      {/* Security phrase change modal */}
+      <Modal
+        visible={securityPhraseModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSecurityPhraseModalVisible(false)}
+      >
+        <View style={styles.presetsModalOverlay}>
+          <View style={[styles.presetsModalContent(colors), isTablet && styles.presetsModalContentTablet]}>
+            <View style={styles.presetsModalHeader}>
+              <Text style={[baseStyles.heading, styles.presetsModalTitle(colors), isTablet && styles.presetsModalTitleTablet]}>
+                Change Security Phrase
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSecurityPhraseModalVisible(false)}
+                style={styles.presetsModalCloseButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={isTablet ? 28 : 24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.presetsModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[baseStyles.text, styles.securityPhraseHint(colors)]}>
+                Enter your current phrase, then a new phrase twice. Change this if you suspect a breach.
+              </Text>
+              <TextInput
+                style={[styles.securityPhraseInput(colors), isTablet && styles.securityPhraseInputTablet]}
+                placeholder="Current security phrase"
+                placeholderTextColor={colors.textMuted}
+                value={currentPhrase}
+                onChangeText={setCurrentPhrase}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TextInput
+                style={[styles.securityPhraseInput(colors), isTablet && styles.securityPhraseInputTablet]}
+                placeholder="New security phrase"
+                placeholderTextColor={colors.textMuted}
+                value={newPhrase}
+                onChangeText={setNewPhrase}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TextInput
+                style={[styles.securityPhraseInput(colors), isTablet && styles.securityPhraseInputTablet]}
+                placeholder="Confirm new phrase"
+                placeholderTextColor={colors.textMuted}
+                value={confirmPhrase}
+                onChangeText={setConfirmPhrase}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {securityPhraseError ? (
+                <Text style={[baseStyles.text, styles.securityPhraseError(colors)]}>{securityPhraseError}</Text>
+              ) : null}
+              <TouchableOpacity
+                style={[styles.securityPhraseSaveButton(colors), isTablet && styles.securityPhraseSaveButtonTablet]}
+                onPress={handleChangeSecurityPhrase}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.securityPhraseSaveText(colors)}>Save new phrase</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Presets Management Modal */}
       <Modal
@@ -690,5 +824,46 @@ const styles = {
     fontWeight: '600' as const,
     color: colors.error,
     marginLeft: 6,
+  }),
+  securityPhraseHint: (colors: ThemeColors) => ({
+    color: colors.textLight,
+    marginBottom: 16,
+    fontSize: 14,
+  }),
+  securityPhraseInput: (colors: ThemeColors) => ({
+    borderWidth: 2,
+    borderColor: colors.neutralMedium,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.neutralBackground,
+    marginBottom: 12,
+  }),
+  securityPhraseInputTablet: {
+    padding: 18,
+    borderRadius: 16,
+    fontSize: 18,
+  },
+  securityPhraseError: (colors: ThemeColors) => ({
+    color: colors.error,
+    fontSize: 14,
+    marginBottom: 12,
+  }),
+  securityPhraseSaveButton: (colors: ThemeColors) => ({
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center' as const,
+    marginTop: 8,
+  }),
+  securityPhraseSaveButtonTablet: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  securityPhraseSaveText: (colors: ThemeColors) => ({
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.white,
   }),
 };
