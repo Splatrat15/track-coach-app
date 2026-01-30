@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../constants/themes';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useUserRole } from '../../contexts/UserRoleContext';
 import { getAllAthletes, initializeAthletes, refetchAthletes } from '../../data/athletes';
@@ -36,10 +37,14 @@ export default function EveryoneScreen() {
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { currentUser } = useAuth();
   const { isCoach } = useUserRole();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const canEditCoaches =
+    currentUser?.role === 'developer' || (currentUser?.role === 'coach' && currentUser?.isHeadCoach);
 
   const loadData = useCallback(async () => {
     await initializeAthletes();
@@ -121,26 +126,36 @@ export default function EveryoneScreen() {
           </View>
         ) : (
           <View style={s.listContainer}>
-            {coaches.map((coach) => (
-              <View
-                key={coach.id}
-                style={[s.listItem, isTablet && s.listItemTablet]}
-              >
-                <View style={s.listItemContent}>
-                  <View style={[s.avatar, isTablet && s.avatarTablet]}>
-                    <Ionicons name="people" size={isTablet ? 24 : 20} color={colors.primary} />
+            {[...coaches]
+              .sort((a, b) => (b.isHeadCoach ? 1 : 0) - (a.isHeadCoach ? 1 : 0))
+              .map((coach) => {
+              const CoachWrapper = canEditCoaches ? TouchableOpacity : View;
+              return (
+                <CoachWrapper
+                  key={coach.id}
+                  style={[s.listItem, isTablet && s.listItemTablet]}
+                  onPress={canEditCoaches ? () => router.push(`/(tabs)/everyone/coach/${coach.id}`) : undefined}
+                  activeOpacity={canEditCoaches ? 0.7 : 1}
+                >
+                  <View style={s.listItemContent}>
+                    <View style={[s.avatar, isTablet && s.avatarTablet]}>
+                      <Ionicons name="people" size={isTablet ? 24 : 20} color={colors.primary} />
+                    </View>
+                    <View>
+                      <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
+                        {getCoachName(coach)}
+                      </Text>
+                      <Text style={[s.coachUsername, isTablet && s.coachUsernameTablet]}>
+                        {coach.isHeadCoach ? 'Head coach' : `@${coach.username}`}
+                      </Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
-                      {getCoachName(coach)}
-                    </Text>
-                    <Text style={[s.coachUsername, isTablet && s.coachUsernameTablet]}>
-                      @{coach.username}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ))}
+                  {canEditCoaches && (
+                    <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+                  )}
+                </CoachWrapper>
+              );
+            })}
           </View>
         )}
       </View>

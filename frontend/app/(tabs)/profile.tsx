@@ -113,7 +113,10 @@ export default function ProfileScreen() {
     const ok = await updateCoachSecurityPhrase(currentUser.coachId, currentPhrase.trim(), newPhrase.trim());
     if (ok) {
       setSecurityPhraseModalVisible(false);
-      Alert.alert('Done', 'Your security phrase has been updated.');
+      Alert.alert(
+        'Phrase updated',
+        'Your security phrase has been saved to your account. The old phrase no longer works—use the new one if you need to confirm your identity or sign up again.'
+      );
     } else {
       setSecurityPhraseError('Current phrase is incorrect. Try again or change it after a breach.');
     }
@@ -267,7 +270,7 @@ export default function ProfileScreen() {
             Security Phrase
           </Text>
           <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
-            Change your security phrase here if you suspect a breach. Keep it private.
+            If the phrase was shared, change it here. The new phrase is saved to the database and the old one stops working.
           </Text>
           <TouchableOpacity
             style={[styles.presetsButton(colors), isTablet && styles.presetsButtonTablet]}

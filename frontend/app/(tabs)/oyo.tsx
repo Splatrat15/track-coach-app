@@ -21,7 +21,7 @@ export default function OyoSubmissionsScreen() {
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
-  const isCoach = currentUser?.role === 'coach';
+  const isCoach = currentUser?.role === 'coach' || currentUser?.role === 'developer';
   const [submissions, setSubmissions] = useState<Map<string, OyoSubmission>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [submissionsVersion, setSubmissionsVersion] = useState(0); // Force re-compute of duplicate check

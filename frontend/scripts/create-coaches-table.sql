@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.coaches (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   security_phrase_hash TEXT,
+  is_head_coach BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

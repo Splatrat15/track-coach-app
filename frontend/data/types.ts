@@ -18,6 +18,16 @@ export interface Athlete {
   updatedAt: Date;
 }
 
+/** Developer account: full admin (edit/delete coaches, promote head coach, etc.). Login only, no sign-up. */
+export interface Developer {
+  id: string;
+  username: string;
+  passwordHash: string;
+  displayName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** Coach account (sign-up stored in DB). Password and security phrase stored hashed. */
 export interface Coach {
   id: string;
@@ -28,6 +38,8 @@ export interface Coach {
   passwordHash: string;
   /** SHA-256 hash of coach security phrase (for confirmation/breach recovery). */
   securityPhraseHash: string;
+  /** Head coaches can edit/delete other coaches; regular coaches cannot. */
+  isHeadCoach: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

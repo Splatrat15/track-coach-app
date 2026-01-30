@@ -9,11 +9,14 @@ import { setUserRole, UserRole } from '../data/user';
 const STORAGE_KEY = '@auth_user';
 
 export type AuthUser = {
-  role: 'coach' | 'athlete';
+  role: 'developer' | 'coach' | 'athlete';
   id: string;
   displayName: string;
+  developerId?: string;
   coachId?: string;
   athleteId?: string;
+  /** True when logged-in coach is a head coach (can edit/delete other coaches). */
+  isHeadCoach?: boolean;
 };
 
 type AuthContextType = {
@@ -34,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUserState(user);
     if (user) {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      await setUserRole(user.role as UserRole);
+      await setUserRole(user.role === 'developer' || user.role === 'coach' ? 'coach' : 'athlete');
     } else {
       await AsyncStorage.removeItem(STORAGE_KEY);
     }

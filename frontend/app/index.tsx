@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { addAthlete, getAthleteByUsername } from '../data/athletes';
 import { addCoach, getCoachByUsername, verifyPassword } from '../data/coaches';
+import { getDeveloperByUsername, verifyDeveloperPassword } from '../data/developers';
 
 type UserType = 'coach' | 'athlete';
 type AuthMode = 'login' | 'signup';
@@ -61,6 +62,8 @@ export default function LoginScreen() {
   const [showGenderModal, setShowGenderModal] = useState(false);
   const [showRankModal, setShowRankModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Coach sign-up only: gate phrase (must match app-wide phrase to sign up as coach)
+  const [securityPhrase, setSecurityPhrase] = useState('');
 
   if (!isLoaded) {
     return (
@@ -86,6 +89,20 @@ export default function LoginScreen() {
     }
     setIsSubmitting(true);
     try {
+      const developer = await getDeveloperByUsername(u);
+      if (developer && developer.passwordHash) {
+        const ok = await verifyDeveloperPassword(p, developer.passwordHash);
+        if (ok) {
+          await setCurrentUser({
+            role: 'developer',
+            id: developer.id,
+            displayName: developer.displayName || developer.username,
+            developerId: developer.id,
+          });
+          router.replace('/(tabs)/attendance');
+          return;
+        }
+      }
       const coach = await getCoachByUsername(u);
       if (coach && coach.passwordHash) {
         const ok = await verifyPassword(p, coach.passwordHash);
@@ -95,6 +112,7 @@ export default function LoginScreen() {
             id: coach.id,
             displayName: `${coach.firstName} ${coach.lastName}`.trim() || coach.username,
             coachId: coach.id,
+            isHeadCoach: coach.isHeadCoach,
           });
           router.replace('/(tabs)/attendance');
           return;
@@ -145,9 +163,10 @@ export default function LoginScreen() {
     }
 
     if (userType !== 'athlete') {
-      // Coach sign-up: first name, last name, username, email, password
+      // Coach sign-up: first name, last name, username, email, password, security phrase
       const f = firstName.trim();
       const l = lastName.trim();
+      const phrase = securityPhrase.trim();
       if (!f) {
         Alert.alert('Error', 'Please enter a first name');
         return;
@@ -156,15 +175,30 @@ export default function LoginScreen() {
         Alert.alert('Error', 'Please enter a last name');
         return;
       }
+      if (!phrase) {
+        Alert.alert('Error', 'Please enter the coach sign-up phrase. Only authorized coaches can create an account.');
+        return;
+      }
       try {
-        const coach = await addCoach({ firstName: f, lastName: l, username: u, email: e, password: p });
+        const coach = await addCoach({
+          firstName: f,
+          lastName: l,
+          username: u,
+          email: e,
+          password: p,
+          securityPhrase: phrase,
+        });
         await setCurrentUser({
           role: 'coach',
           id: coach.id,
           displayName: `${coach.firstName} ${coach.lastName}`.trim() || coach.username,
           coachId: coach.id,
         });
-        router.replace('/(tabs)/attendance');
+        Alert.alert(
+          'Account created',
+          'You can change your security phrase in Profile if needed.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/attendance') }]
+        );
       } catch (err: unknown) {
         Alert.alert('Error', err instanceof Error ? err.message : 'Failed to sign up');
       }
@@ -323,6 +357,17 @@ export default function LoginScreen() {
                 value={lastName}
                 onChangeText={setLastName}
                 autoCapitalize="words"
+              />
+              <Text style={s.inputLabel}>Coach sign-up phrase *</Text>
+              <TextInput
+                style={s.input}
+                placeholder="Enter the phrase (authorized coaches only)"
+                placeholderTextColor={colors.textMuted}
+                value={securityPhrase}
+                onChangeText={setSecurityPhrase}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
               />
             </>
           )}

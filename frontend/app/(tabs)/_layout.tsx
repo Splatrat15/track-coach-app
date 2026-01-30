@@ -135,6 +135,13 @@ export default function TabLayout() {
           headerShown: false, // Hide header, we have custom header
         }}
       />
+      <Tabs.Screen
+        name="everyone/coach/[id]"
+        options={{
+          href: null, // Hide from tab bar
+          headerShown: false,
+        }}
+      />
     </Tabs>
   );
 }
