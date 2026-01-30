@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../constants/themes';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useUserRole } from '../../contexts/UserRoleContext';
 import { getAllAthletes, getAthleteName, refetchAthletes } from '../../data/athletes';
 import { getDuplicateImageSubmissionIds, getOyoSubmissionsByDate, initializeOyoSubmissions, refetchOyoSubmissions } from '../../data/oyoSubmissions';
 import { Athlete, OyoSubmission } from '../../data/types';
@@ -21,7 +22,7 @@ export default function OyoSubmissionsScreen() {
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
-  const isCoach = currentUser?.role === 'coach' || currentUser?.role === 'developer';
+  const { isCoach } = useUserRole();
   const [submissions, setSubmissions] = useState<Map<string, OyoSubmission>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [submissionsVersion, setSubmissionsVersion] = useState(0); // Force re-compute of duplicate check

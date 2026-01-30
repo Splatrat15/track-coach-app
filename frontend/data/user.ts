@@ -7,7 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@user_role';
 
-export type UserRole = 'coach' | 'athlete';
+export type UserRole = 'coach' | 'athlete' | 'head_coach' | 'developer';
 
 // Default to 'coach' for now (can be changed later)
 const DEFAULT_ROLE: UserRole = 'coach';
@@ -60,10 +60,11 @@ export async function setUserRole(role: UserRole): Promise<void> {
 }
 
 /**
- * Check if user is a coach
+ * Check if user is a coach (or head coach or developer view)
  */
 export function isCoach(): boolean {
-  return getUserRole() === 'coach';
+  const role = getUserRole();
+  return role === 'coach' || role === 'head_coach' || role === 'developer';
 }
 
 /**

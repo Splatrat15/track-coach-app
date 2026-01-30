@@ -12,6 +12,8 @@ type UserRoleContextType = {
   userRole: UserRole;
   isCoach: boolean;
   isAthlete: boolean;
+  /** True when viewing as head coach (or when logged-in coach is head coach). */
+  isHeadCoach: boolean;
   setRole: (role: UserRole) => Promise<void>;
   refreshRole: () => Promise<void>;
 };
@@ -49,8 +51,9 @@ export function UserRoleProvider({ children }: { children: React.ReactNode }) {
     <UserRoleContext.Provider 
       value={{ 
         userRole, 
-        isCoach: userRole === 'coach',
+        isCoach: userRole === 'coach' || userRole === 'head_coach' || userRole === 'developer',
         isAthlete: userRole === 'athlete',
+        isHeadCoach: userRole === 'head_coach' || userRole === 'developer',
         setRole,
         refreshRole
       }}

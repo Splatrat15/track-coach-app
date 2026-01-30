@@ -48,13 +48,13 @@ export default function TabLayout() {
         headerRight: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
             <Ionicons 
-              name={userRole === 'coach' ? 'people' : 'person'} 
+              name={userRole === 'developer' ? 'code-slash' : userRole === 'coach' || userRole === 'head_coach' ? 'people' : 'person'} 
               size={18} 
               color={colors.white} 
               style={{ marginRight: 6 }}
             />
             <Text style={{ color: colors.white, fontSize: 14, fontWeight: '600' }}>
-              {userRole === 'coach' ? 'Coach' : 'Athlete'}
+              {userRole === 'developer' ? 'Developer' : userRole === 'head_coach' ? 'Head coach' : userRole === 'coach' ? 'Coach' : 'Athlete'}
             </Text>
           </View>
         ),

@@ -20,6 +20,7 @@ export default function ProfileScreen() {
   const { currentUser, logout } = useAuth();
   const { userRole, setRole, refreshRole } = useUserRole();
   const isCoachAccount = currentUser?.role === 'coach';
+  const isDeveloper = currentUser?.role === 'developer';
   const [presetsModalVisible, setPresetsModalVisible] = useState(false);
   const [presetList, setPresetList] = useState<WorkoutPreset[]>([]);
   const [securityPhraseModalVisible, setSecurityPhraseModalVisible] = useState(false);
@@ -35,25 +36,25 @@ export default function ProfileScreen() {
     }, [refreshRole])
   );
 
+  const getRoleLabel = (role: UserRole) =>
+    role === 'developer' ? 'Developer' : role === 'head_coach' ? 'Head coach' : role === 'coach' ? 'Coach' : 'Athlete';
+
   const handleRoleChange = async (newRole: UserRole) => {
     if (newRole === userRole) return;
 
     Alert.alert(
       'Change Role',
-      `Are you sure you want to change your role to ${newRole === 'coach' ? 'Coach' : 'Athlete'}?`,
+      `Are you sure you want to change your role to ${getRoleLabel(newRole)}?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            await setRole(newRole);
-          },
-        },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: async () => await setRole(newRole) },
       ]
     );
+  };
+
+  const handleDeveloperViewChange = async (newRole: UserRole) => {
+    if (newRole === userRole) return;
+    await setRole(newRole);
   };
 
   const openPresetsModal = async () => {
@@ -170,8 +171,134 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Switch view - developers only; see app as Athlete, Coach, or Head coach */}
+      {isDeveloper && (
+        <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
+          <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
+            Switch view
+          </Text>
+          <Text style={[styles.sectionDescription(colors), isTablet && styles.sectionDescriptionTablet]}>
+            View the app exactly as athletes, coaches, or head coaches see it
+          </Text>
+
+          <View style={styles.roleContainer}>
+            <TouchableOpacity
+              style={[
+                styles.roleButton(colors),
+                userRole === 'athlete' && styles.roleButtonActive(colors),
+                isTablet && styles.roleButtonTablet,
+              ]}
+              onPress={() => handleDeveloperViewChange('athlete')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="person"
+                size={isTablet ? 32 : 28}
+                color={userRole === 'athlete' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.roleButtonText(colors),
+                  userRole === 'athlete' && styles.roleButtonTextActive,
+                  isTablet && styles.roleButtonTextTablet,
+                ]}
+              >
+                Athlete
+              </Text>
+              {userRole === 'athlete' && (
+                <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.roleButton(colors),
+                userRole === 'coach' && styles.roleButtonActive(colors),
+                isTablet && styles.roleButtonTablet,
+              ]}
+              onPress={() => handleDeveloperViewChange('coach')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="people"
+                size={isTablet ? 32 : 28}
+                color={userRole === 'coach' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.roleButtonText(colors),
+                  userRole === 'coach' && styles.roleButtonTextActive,
+                  isTablet && styles.roleButtonTextTablet,
+                ]}
+              >
+                Coach
+              </Text>
+              {userRole === 'coach' && (
+                <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.roleButton(colors),
+                userRole === 'head_coach' && styles.roleButtonActive(colors),
+                isTablet && styles.roleButtonTablet,
+              ]}
+              onPress={() => handleDeveloperViewChange('head_coach')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="shield-checkmark"
+                size={isTablet ? 32 : 28}
+                color={userRole === 'head_coach' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.roleButtonText(colors),
+                  userRole === 'head_coach' && styles.roleButtonTextActive,
+                  isTablet && styles.roleButtonTextTablet,
+                ]}
+              >
+                Head coach
+              </Text>
+              {userRole === 'head_coach' && (
+                <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.roleButton(colors),
+                userRole === 'developer' && styles.roleButtonActive(colors),
+                isTablet && styles.roleButtonTablet,
+              ]}
+              onPress={() => handleDeveloperViewChange('developer')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="code-slash"
+                size={isTablet ? 32 : 28}
+                color={userRole === 'developer' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.roleButtonText(colors),
+                  userRole === 'developer' && styles.roleButtonTextActive,
+                  isTablet && styles.roleButtonTextTablet,
+                ]}
+              >
+                Developer
+              </Text>
+              {userRole === 'developer' && (
+                <Ionicons name="checkmark-circle" size={isTablet ? 24 : 20} color={colors.white} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Account Type - coach accounts only; athletes' role is fixed at sign-up */}
-      {isCoachAccount && (
+      {isCoachAccount && !isDeveloper && (
         <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
           <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
             Account Type
@@ -286,8 +413,8 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {/* About / Current Role - coach accounts only */}
-      {isCoachAccount && (
+      {/* About / Current Role - coach or developer */}
+      {(isCoachAccount || isDeveloper) && (
         <View style={[styles.section(colors), isTablet && styles.sectionTablet]}>
           <Text style={[styles.sectionTitle(colors), isTablet && styles.sectionTitleTablet]}>
             About
@@ -296,10 +423,10 @@ export default function ProfileScreen() {
             <Ionicons name="information-circle-outline" size={isTablet ? 24 : 20} color={colors.textLight} />
             <View style={styles.infoContent}>
               <Text style={[styles.infoLabel(colors), isTablet && styles.infoLabelTablet]}>
-                Current Role
+                {isDeveloper ? 'Current view' : 'Current Role'}
               </Text>
               <Text style={[styles.infoValue(colors), isTablet && styles.infoValueTablet]}>
-                {userRole === 'coach' ? 'Coach' : 'Athlete'}
+                {getRoleLabel(userRole)}
               </Text>
             </View>
           </View>

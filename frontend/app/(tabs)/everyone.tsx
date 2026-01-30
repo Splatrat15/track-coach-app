@@ -38,13 +38,15 @@ export default function EveryoneScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentUser } = useAuth();
-  const { isCoach } = useUserRole();
+  const { isCoach, userRole } = useUserRole();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const canEditCoaches =
-    currentUser?.role === 'developer' || (currentUser?.role === 'coach' && currentUser?.isHeadCoach);
+    currentUser?.role === 'developer'
+      ? (userRole === 'head_coach' || userRole === 'developer')
+      : (currentUser?.role === 'coach' && currentUser?.isHeadCoach);
 
   const loadData = useCallback(async () => {
     await initializeAthletes();

@@ -37,7 +37,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUserState(user);
     if (user) {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      await setUserRole(user.role === 'developer' || user.role === 'coach' ? 'coach' : 'athlete');
+      await setUserRole(
+        user.role === 'developer' ? 'developer' : user.role === 'coach' ? 'coach' : 'athlete'
+      );
     } else {
       await AsyncStorage.removeItem(STORAGE_KEY);
     }

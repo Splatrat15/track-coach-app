@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../../../constants/themes';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { useTheme } from '../../../../contexts/ThemeContext';
+import { useUserRole } from '../../../../contexts/UserRoleContext';
 import {
     deleteCoach,
     getCoachById,
@@ -37,6 +38,7 @@ export default function EditCoachScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentUser } = useAuth();
+  const { userRole } = useUserRole();
   const s = getStyles(colors);
 
   const [coach, setCoach] = useState<Coach | null>(null);
@@ -50,9 +52,12 @@ export default function EditCoachScreen() {
 
   const isDeveloper = currentUser?.role === 'developer';
   const isHeadCoachUser = currentUser?.role === 'coach' && currentUser?.isHeadCoach;
+  const developerViewingAsHeadCoach = currentUser?.role === 'developer' && userRole === 'head_coach';
   const canPromote = isDeveloper;
   const canDelete =
-    isDeveloper || (isHeadCoachUser && currentUser?.coachId !== id);
+    isDeveloper ||
+    (isHeadCoachUser && currentUser?.coachId !== id) ||
+    developerViewingAsHeadCoach;
 
   const loadCoach = useCallback(async () => {
     if (!id) return;
