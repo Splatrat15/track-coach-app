@@ -131,33 +131,35 @@ export default function EveryoneScreen() {
             {[...coaches]
               .sort((a, b) => (b.isHeadCoach ? 1 : 0) - (a.isHeadCoach ? 1 : 0))
               .map((coach) => {
-              const CoachWrapper = canEditCoaches ? TouchableOpacity : View;
-              return (
-                <CoachWrapper
-                  key={coach.id}
-                  style={[s.listItem, isTablet && s.listItemTablet]}
-                  onPress={canEditCoaches ? () => router.push(`/(tabs)/everyone/coach/${coach.id}`) : undefined}
-                  activeOpacity={canEditCoaches ? 0.7 : 1}
-                >
-                  <View style={s.listItemContent}>
-                    <View style={[s.avatar, isTablet && s.avatarTablet]}>
-                      <Ionicons name="people" size={isTablet ? 24 : 20} color={colors.primary} />
+                const canTapCoach =
+                  canEditCoaches || (currentUser?.role === 'coach' && currentUser?.coachId === coach.id);
+                const CoachWrapper = canTapCoach ? TouchableOpacity : View;
+                return (
+                  <CoachWrapper
+                    key={coach.id}
+                    style={[s.listItem, isTablet && s.listItemTablet]}
+                    onPress={canTapCoach ? () => router.push(`/(tabs)/everyone/coach/${coach.id}`) : undefined}
+                    activeOpacity={canTapCoach ? 0.7 : 1}
+                  >
+                    <View style={s.listItemContent}>
+                      <View style={[s.avatar, isTablet && s.avatarTablet]}>
+                        <Ionicons name="people" size={isTablet ? 24 : 20} color={colors.primary} />
+                      </View>
+                      <View>
+                        <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
+                          {getCoachName(coach)}
+                        </Text>
+                        <Text style={[s.coachUsername, isTablet && s.coachUsernameTablet]}>
+                          {coach.isHeadCoach ? 'Head coach' : `@${coach.username}`}
+                        </Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
-                        {getCoachName(coach)}
-                      </Text>
-                      <Text style={[s.coachUsername, isTablet && s.coachUsernameTablet]}>
-                        {coach.isHeadCoach ? 'Head coach' : `@${coach.username}`}
-                      </Text>
-                    </View>
-                  </View>
-                  {canEditCoaches && (
-                    <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
-                  )}
-                </CoachWrapper>
-              );
-            })}
+                    {canTapCoach && (
+                      <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+                    )}
+                  </CoachWrapper>
+                );
+              })}
           </View>
         )}
       </View>
@@ -180,36 +182,40 @@ export default function EveryoneScreen() {
           </View>
         ) : (
           <View style={s.listContainer}>
-            {athletes.map((athlete) => (
-              <TouchableOpacity
-                key={athlete.id}
-                style={[s.listItem, isTablet && s.listItemTablet]}
-                onPress={isCoach ? () => router.push(`/(tabs)/everyone/${athlete.id}`) : undefined}
-                disabled={!isCoach}
-                activeOpacity={isCoach ? 0.7 : 1}
-              >
-                <View style={s.listItemContent}>
-                  <View style={[s.avatar, isTablet && s.avatarTablet]}>
-                    <Ionicons name="person" size={isTablet ? 24 : 20} color={colors.primary} />
-                  </View>
-                  <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
-                    {getAthleteNameShort(athlete)}
-                  </Text>
-                </View>
-                <View style={s.listItemRight}>
-                  {athlete.gender && (
-                    <View style={[s.badge, athlete.gender === 'male' ? s.badgeMale : s.badgeFemale]}>
-                      <Text style={[s.badgeText, isTablet && s.badgeTextTablet]}>
-                        {athlete.gender.charAt(0).toUpperCase() + athlete.gender.slice(1)}
-                      </Text>
+            {athletes.map((athlete) => {
+              const canTapAthlete =
+                isCoach || (currentUser?.role === 'athlete' && currentUser?.athleteId === athlete.id);
+              return (
+                <TouchableOpacity
+                  key={athlete.id}
+                  style={[s.listItem, isTablet && s.listItemTablet]}
+                  onPress={canTapAthlete ? () => router.push(`/(tabs)/everyone/${athlete.id}`) : undefined}
+                  disabled={!canTapAthlete}
+                  activeOpacity={canTapAthlete ? 0.7 : 1}
+                >
+                  <View style={s.listItemContent}>
+                    <View style={[s.avatar, isTablet && s.avatarTablet]}>
+                      <Ionicons name="person" size={isTablet ? 24 : 20} color={colors.primary} />
                     </View>
-                  )}
-                  {isCoach && (
-                    <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
+                    <Text style={[s.listItemText, isTablet && s.listItemTextTablet]}>
+                      {getAthleteNameShort(athlete)}
+                    </Text>
+                  </View>
+                  <View style={s.listItemRight}>
+                    {athlete.gender && (
+                      <View style={[s.badge, athlete.gender === 'male' ? s.badgeMale : s.badgeFemale]}>
+                        <Text style={[s.badgeText, isTablet && s.badgeTextTablet]}>
+                          {athlete.gender.charAt(0).toUpperCase() + athlete.gender.slice(1)}
+                        </Text>
+                      </View>
+                    )}
+                    {canTapAthlete && (
+                      <Ionicons name="chevron-forward" size={isTablet ? 24 : 20} color={colors.textMuted} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </View>
@@ -238,7 +244,7 @@ function getStyles(colors: ThemeColors) {
     contentContainerTablet: {
       maxWidth: 1200,
       alignSelf: 'center' as const,
-      width: '100%',
+      width: '100%' as const,
       paddingHorizontal: 40,
       paddingBottom: 40,
     },

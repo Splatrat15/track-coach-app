@@ -46,13 +46,17 @@ export default function EditCoachScreen() {
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [isHeadCoach, setIsHeadCoach] = useState(false);
+  const [showChangeDetailsForm, setShowChangeDetailsForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const isDeveloper = currentUser?.role === 'developer';
   const isHeadCoachUser = currentUser?.role === 'coach' && currentUser?.isHeadCoach;
   const developerViewingAsHeadCoach = currentUser?.role === 'developer' && userRole === 'head_coach';
+  const isSelfEdit = currentUser?.role === 'coach' && currentUser?.coachId === id;
+  const canChangePassword = isSelfEdit || isDeveloper;
   const canPromote = isDeveloper;
   const canDelete =
     isDeveloper ||
@@ -101,6 +105,7 @@ export default function EditCoachScreen() {
         lastName: l,
         username: u,
         email: e,
+        ...(newPassword.trim() ? { password: newPassword.trim() } : {}),
       });
       if (ok) {
         if (canPromote) {
@@ -171,10 +176,35 @@ export default function EditCoachScreen() {
             <Ionicons name="arrow-back" size={isTablet ? 28 : 24} color={colors.primary} />
             <Text style={[s.backButtonText, isTablet && s.backButtonTextTablet]}>Back</Text>
           </TouchableOpacity>
-          <Text style={[s.title, isTablet && s.titleTablet]}>Edit Coach</Text>
+          <Text style={[s.title, isTablet && s.titleTablet]}>
+            {isSelfEdit ? 'Edit my profile' : 'Edit Coach'}
+          </Text>
           <Text style={[s.subtitle, isTablet && s.subtitleTablet]}>{getCoachName(coach)}</Text>
         </View>
 
+        {/* Change details button (self-edit only); when tapped, show form */}
+        {isSelfEdit && !showChangeDetailsForm && (
+          <View style={[s.formCard, isTablet && s.formCardTablet]}>
+            <TouchableOpacity
+              style={[s.changeDetailsButton, isTablet && s.changeDetailsButtonTablet]}
+              onPress={() => setShowChangeDetailsForm(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="create-outline" size={isTablet ? 28 : 24} color={colors.primary} />
+              <View>
+                <Text style={[s.changeDetailsButtonText, isTablet && s.changeDetailsButtonTextTablet]}>
+                  Change details
+                </Text>
+                <Text style={[s.changeDetailsButtonHint, isTablet && s.changeDetailsButtonHintTablet]}>
+                  Update name, username, email, or password
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Form - shown when head coach/dev editing coach, or when coach tapped "Change details" */}
+        {(!isSelfEdit || showChangeDetailsForm) && (
         <View style={[s.formCard, isTablet && s.formCardTablet]}>
           <Text style={s.inputLabel}>First name *</Text>
           <TextInput
@@ -228,6 +258,22 @@ export default function EditCoachScreen() {
             </View>
           )}
 
+          {canChangePassword && (
+            <>
+              <Text style={s.inputLabel}>New password (leave blank to keep current)</Text>
+              <TextInput
+                style={[s.input, isTablet && s.inputTablet]}
+                placeholder="New password"
+                placeholderTextColor={colors.textMuted}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </>
+          )}
+
           <TouchableOpacity
             onPress={handleSave}
             style={[s.saveButton, isSubmitting && s.saveButtonDisabled, isTablet && s.saveButtonTablet]}
@@ -239,6 +285,7 @@ export default function EditCoachScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        )}
 
         {canDelete && (
           <View style={[s.deleteCard, isTablet && s.deleteCardTablet]}>
@@ -278,6 +325,33 @@ function getStyles(colors: ThemeColors) {
       borderColor: colors.neutralMedium,
     },
     formCardTablet: { padding: 28, borderRadius: 20 },
+    changeDetailsButton: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 12,
+      padding: 16,
+      backgroundColor: colors.neutralBackground,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: colors.primary,
+    },
+    changeDetailsButtonTablet: {
+      padding: 20,
+      borderRadius: 16,
+      gap: 16,
+    },
+    changeDetailsButtonText: {
+      fontSize: 18,
+      fontWeight: '600' as const,
+      color: colors.primary,
+    },
+    changeDetailsButtonTextTablet: { fontSize: 22 },
+    changeDetailsButtonHint: {
+      fontSize: 14,
+      color: colors.textMuted,
+      marginTop: 4,
+    },
+    changeDetailsButtonHintTablet: { fontSize: 16 },
     inputLabel: { fontSize: 14, fontWeight: '600' as const, color: colors.text, marginBottom: 8 },
     input: {
       backgroundColor: colors.neutralBackground,

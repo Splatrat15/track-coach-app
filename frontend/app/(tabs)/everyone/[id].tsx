@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../../constants/themes';
+import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useUserRole } from '../../../contexts/UserRoleContext';
 import { deleteAthlete, getAthleteById, getAthleteName, refetchAthletes, updateAthlete } from '../../../data/athletes';
+import { hashPassword } from '../../../data/coaches';
 import { Athlete } from '../../../data/types';
 
 export default function EditAthleteScreen() {
@@ -16,15 +18,23 @@ export default function EditAthleteScreen() {
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { currentUser } = useAuth();
   const { isCoach } = useUserRole();
   const s = getStyles(colors);
+
+  const isSelfEdit = currentUser?.role === 'athlete' && currentUser?.athleteId === id;
+  const canChangePassword = isSelfEdit || currentUser?.role === 'developer';
 
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [goal1600m, setGoal1600m] = useState('');
   const [rank, setRank] = useState<'rookie' | 'veteran' | 'varsity' | 'veteran/varsity' | null>(null);
   const [showRankDropdown, setShowRankDropdown] = useState(false);
+  const [showChangeDetailsForm, setShowChangeDetailsForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,6 +45,8 @@ export default function EditAthleteScreen() {
         setAthlete(athleteData);
         setFirstName(athleteData.firstName);
         setLastName(athleteData.lastName);
+        setUsername(athleteData.username ?? '');
+        setEmail(athleteData.email ?? '');
         setGoal1600m(athleteData.goal1600m || '');
         setRank(athleteData.rank);
         setIsLoading(false);
@@ -44,6 +56,13 @@ export default function EditAthleteScreen() {
       }
     }
   }, [id, router]);
+
+  useEffect(() => {
+    if (!isLoading && athlete && !isSelfEdit && !isCoach) {
+      Alert.alert('Error', 'You can only edit your own profile here.');
+      router.push('/(tabs)/everyone');
+    }
+  }, [isLoading, athlete, isSelfEdit, isCoach, router]);
 
   const validateTimeFormat = (time: string): boolean => {
     if (!time.trim()) return false;
@@ -58,7 +77,6 @@ export default function EditAthleteScreen() {
 
     const firstNameTrimmed = firstName.trim();
     const lastNameTrimmed = lastName.trim();
-    const goal1600mTrimmed = goal1600m.trim();
 
     if (!firstNameTrimmed) {
       Alert.alert('Error', 'Please enter a first name');
@@ -70,16 +88,41 @@ export default function EditAthleteScreen() {
       return;
     }
 
+    if (isSelfEdit) {
+      setIsSubmitting(true);
+      try {
+        const updates: Partial<Athlete> = {
+          firstName: firstNameTrimmed,
+          lastName: lastNameTrimmed,
+          username: username.trim() || undefined,
+          email: email.trim() || undefined,
+        };
+        if (canChangePassword && newPassword.trim()) {
+          updates.passwordHash = await hashPassword(newPassword.trim());
+        }
+        await updateAthlete(athlete.id, updates);
+        await refetchAthletes();
+        Alert.alert('Success', 'Your profile was updated.', [
+          { text: 'OK', onPress: () => router.push('/(tabs)/everyone') },
+        ]);
+      } catch (error: any) {
+        console.error('Error updating athlete:', error);
+        Alert.alert('Error', error.message || 'Failed to update profile');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    const goal1600mTrimmed = goal1600m.trim();
     if (!goal1600mTrimmed) {
       Alert.alert('Error', 'Please enter a Goal 1600m time');
       return;
     }
-
     if (!validateTimeFormat(goal1600mTrimmed)) {
       Alert.alert('Error', 'Please enter a valid time format (M:SS or MM:SS, e.g., 6:03)');
       return;
     }
-
     if (!rank) {
       Alert.alert('Error', 'Please select a rank');
       return;
@@ -87,19 +130,21 @@ export default function EditAthleteScreen() {
 
     setIsSubmitting(true);
     try {
-      await updateAthlete(athlete.id, {
+      const updates: Partial<Athlete> = {
         firstName: firstNameTrimmed,
         lastName: lastNameTrimmed,
         goal1600m: goal1600mTrimmed,
         rank: rank,
-      });
-      
+        username: username.trim() || undefined,
+        email: email.trim() || undefined,
+      };
+      if (canChangePassword && newPassword.trim()) {
+        updates.passwordHash = await hashPassword(newPassword.trim());
+      }
+      await updateAthlete(athlete.id, updates);
       await refetchAthletes();
       Alert.alert('Success', 'Athlete updated successfully', [
-        {
-          text: 'OK',
-          onPress: () => router.push('/(tabs)/everyone'),
-        },
+        { text: 'OK', onPress: () => router.push('/(tabs)/everyone') },
       ]);
     } catch (error: any) {
       console.error('Error updating athlete:', error);
@@ -170,14 +215,36 @@ export default function EditAthleteScreen() {
             <Text style={[s.backButtonText, isTablet && s.backButtonTextTablet]}>Back</Text>
           </TouchableOpacity>
           <Text style={[s.title, isTablet && s.titleTablet]}>
-            Edit Athlete
+            {isSelfEdit ? 'Edit my profile' : 'Edit Athlete'}
           </Text>
           <Text style={[s.subtitle, isTablet && s.subtitleTablet]}>
             {getAthleteName(athlete)}
           </Text>
         </View>
 
-        {/* Form */}
+        {/* Change details button (self-edit only); when tapped, show form */}
+        {isSelfEdit && !showChangeDetailsForm && (
+          <View style={[s.formCard, isTablet && s.formCardTablet]}>
+            <TouchableOpacity
+              style={[s.changeDetailsButton, isTablet && s.changeDetailsButtonTablet]}
+              onPress={() => setShowChangeDetailsForm(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="create-outline" size={isTablet ? 28 : 24} color={colors.primary} />
+              <View>
+                <Text style={[s.changeDetailsButtonText, isTablet && s.changeDetailsButtonTextTablet]}>
+                  Change details
+                </Text>
+                <Text style={[s.changeDetailsButtonHint, isTablet && s.changeDetailsButtonHintTablet]}>
+                  Update name, username, email, or password
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Form - shown when coach editing athlete, or when athlete tapped "Change details" */}
+        {(!isSelfEdit || showChangeDetailsForm) && (
         <View style={[s.formCard, isTablet && s.formCardTablet]}>
           <View style={s.inputsColumn}>
             <View style={s.nameInputsRow}>
@@ -197,27 +264,68 @@ export default function EditAthleteScreen() {
               />
             </View>
 
-            <TouchableOpacity
-              style={[s.dropdownButton, isTablet && s.dropdownButtonTablet]}
-              onPress={() => setShowRankDropdown(true)}
-            >
-              <Text style={[
-                s.dropdownButtonText,
-                !rank && s.dropdownButtonTextPlaceholder,
-                isTablet && s.dropdownButtonTextTablet
-              ]}>
-                {rank ? rank.charAt(0).toUpperCase() + rank.slice(1).replace('/', '/') : 'Rank *'}
-              </Text>
-              <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={colors.text} />
-            </TouchableOpacity>
-
+            <Text style={s.inputLabel}>Username</Text>
             <TextInput
-              style={[s.nameInput, s.goalInput, isTablet && s.nameInputTablet]}
-              placeholder="Goal 1600m (e.g., 6:03) *"
+              style={[s.nameInput, isTablet && s.nameInputTablet]}
+              placeholder="Username"
               placeholderTextColor={colors.textMuted}
-              value={goal1600m}
-              onChangeText={setGoal1600m}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
+            <Text style={s.inputLabel}>Email</Text>
+            <TextInput
+              style={[s.nameInput, isTablet && s.nameInputTablet]}
+              placeholder="Email"
+              placeholderTextColor={colors.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {canChangePassword && (
+              <>
+                <Text style={s.inputLabel}>New password (leave blank to keep current)</Text>
+                <TextInput
+                  style={[s.nameInput, isTablet && s.nameInputTablet]}
+                  placeholder="New password"
+                  placeholderTextColor={colors.textMuted}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </>
+            )}
+
+            {!isSelfEdit && (
+              <>
+                <TouchableOpacity
+                  style={[s.dropdownButton, isTablet && s.dropdownButtonTablet]}
+                  onPress={() => setShowRankDropdown(true)}
+                >
+                  <Text style={[
+                    s.dropdownButtonText,
+                    !rank && s.dropdownButtonTextPlaceholder,
+                    isTablet && s.dropdownButtonTextTablet
+                  ]}>
+                    {rank ? rank.charAt(0).toUpperCase() + rank.slice(1).replace('/', '/') : 'Rank *'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={isTablet ? 20 : 18} color={colors.text} />
+                </TouchableOpacity>
+
+                <TextInput
+                  style={[s.nameInput, s.goalInput, isTablet && s.nameInputTablet]}
+                  placeholder="Goal 1600m (e.g., 6:03) *"
+                  placeholderTextColor={colors.textMuted}
+                  value={goal1600m}
+                  onChangeText={setGoal1600m}
+                />
+              </>
+            )}
           </View>
 
           <TouchableOpacity
@@ -235,9 +343,10 @@ export default function EditAthleteScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        )}
 
-        {/* Delete Button - Only visible to coaches */}
-        {isCoach && (
+        {/* Delete Button - Only visible to coaches (not when athlete editing self) */}
+        {isCoach && !isSelfEdit && (
           <View style={[s.deleteCard, isTablet && s.deleteCardTablet]}>
             <TouchableOpacity
               onPress={handleDelete}
@@ -378,9 +487,46 @@ function getStyles(colors: ThemeColors) {
       padding: 28,
       borderRadius: 20,
     },
+    changeDetailsButton: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 12,
+      padding: 16,
+      backgroundColor: colors.neutralBackground,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: colors.primary,
+    },
+    changeDetailsButtonTablet: {
+      padding: 20,
+      borderRadius: 16,
+      gap: 16,
+    },
+    changeDetailsButtonText: {
+      fontSize: 18,
+      fontWeight: '600' as const,
+      color: colors.primary,
+    },
+    changeDetailsButtonTextTablet: {
+      fontSize: 22,
+    },
+    changeDetailsButtonHint: {
+      fontSize: 14,
+      color: colors.textMuted,
+      marginTop: 4,
+    },
+    changeDetailsButtonHintTablet: {
+      fontSize: 16,
+    },
     inputsColumn: {
       gap: 12,
       marginBottom: 20,
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      color: colors.text,
+      marginBottom: 8,
     },
     nameInputsRow: {
       flexDirection: 'row' as const,

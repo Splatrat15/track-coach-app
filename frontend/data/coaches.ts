@@ -226,11 +226,11 @@ export async function updateCoachSecurityPhrase(
 }
 
 /**
- * Update coach info (name, username, email). Used by developers and head coaches.
+ * Update coach info (name, username, email, optional password). Used by developers, head coaches, and coaches editing themselves.
  */
 export async function updateCoach(
   coachId: string,
-  updates: { firstName?: string; lastName?: string; username?: string; email?: string }
+  updates: { firstName?: string; lastName?: string; username?: string; email?: string; password?: string }
 ): Promise<boolean> {
   const coach = await getCoachById(coachId);
   if (!coach) return false;
@@ -239,6 +239,9 @@ export async function updateCoach(
   if (updates.lastName !== undefined) payload.last_name = updates.lastName.trim();
   if (updates.username !== undefined) payload.username = updates.username.trim();
   if (updates.email !== undefined) payload.email = updates.email.trim().toLowerCase();
+  if (updates.password !== undefined && updates.password.trim()) {
+    payload.password_hash = await hashPassword(updates.password.trim());
+  }
   const { error } = await supabase.from('coaches').update(payload).eq('id', coachId);
   if (error) {
     console.error('Error updating coach:', error);

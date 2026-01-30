@@ -17,8 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../constants/themes';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { addAthlete, getAthleteByUsername } from '../data/athletes';
-import { addCoach, getCoachByUsername, verifyPassword } from '../data/coaches';
+import { addAthlete, addCoach, getAthleteByUsername, getCoachByUsername, verifyPassword } from '../data';
 import { getDeveloperByUsername, verifyDeveloperPassword } from '../data/developers';
 
 type UserType = 'coach' | 'athlete';
