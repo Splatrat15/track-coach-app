@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ThemeColors } from '../../constants/themes';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAllAthletes, getAthleteName, refetchAthletes } from '../../data/athletes';
 import { getDuplicateImageSubmissionIds, getOyoSubmissionsByDate, initializeOyoSubmissions, refetchOyoSubmissions } from '../../data/oyoSubmissions';
@@ -13,12 +14,14 @@ import { formatDate, formatTimeArizona, getDateKey, normalizeDate } from '../../
 export default function OyoSubmissionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string }>();
+  const { currentUser } = useAuth();
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const isTablet = width >= 768;
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const isCoach = currentUser?.role === 'coach';
   const [submissions, setSubmissions] = useState<Map<string, OyoSubmission>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [submissionsVersion, setSubmissionsVersion] = useState(0); // Force re-compute of duplicate check
@@ -90,7 +93,7 @@ export default function OyoSubmissionsScreen() {
     return submissions.get(athleteId);
   };
 
-  // Filter athletes by gender if filter is selected
+  // Filter athletes by gender if filter is selected (coaches only)
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | null>(null);
   const filteredAthletes = useMemo(() => {
     if (!selectedGender) {
@@ -99,8 +102,14 @@ export default function OyoSubmissionsScreen() {
     return athletes.filter(athlete => athlete.gender === selectedGender);
   }, [athletes, selectedGender]);
 
-  // Athletes are already sorted by last name from the database
-  const sortedAthletes = filteredAthletes;
+  // Athletes see only their own name; coaches see everyone
+  const sortedAthletes = useMemo(() => {
+    if (isCoach) return filteredAthletes;
+    if (currentUser?.role === 'athlete' && currentUser?.athleteId) {
+      return filteredAthletes.filter(a => a.id === currentUser.athleteId);
+    }
+    return filteredAthletes;
+  }, [filteredAthletes, isCoach, currentUser?.role, currentUser?.athleteId]);
 
   // Submission IDs that share the same image (duplicate image flag)
   // Re-compute whenever submissions are reloaded (submissionsVersion changes)
@@ -165,11 +174,14 @@ export default function OyoSubmissionsScreen() {
             {formatDate(selectedDate)}
           </Text>
           <Text style={[s.subtitle, isTablet && s.subtitleTablet]}>
-            {isToday ? 'Tap a name to submit' : 'View only - Submissions only allowed for today'}
+            {isCoach
+              ? (isToday ? 'Tap a name to submit' : 'View only - Submissions only allowed for today')
+              : (isToday ? 'Tap your name to submit your OYO' : 'View only - Submissions only allowed for today')}
           </Text>
         </View>
 
-      {/* Gender Filters */}
+      {/* Gender Filters and Counters - coaches only */}
+      {isCoach && (
       <View style={[s.filtersContainer, isTablet && s.filtersContainerTablet]}>
         <View style={[s.filterGroup, isTablet && s.filterGroupTablet]}>
           <Text style={s.filterLabel}>Gender:</Text>
@@ -207,11 +219,12 @@ export default function OyoSubmissionsScreen() {
           </View>
         </View>
       </View>
+      )}
 
       {/* Athletes List */}
       <View style={[s.card, isTablet && s.cardTablet]}>
         <Text style={[s.cardTitle, isTablet && s.cardTitleTablet]}>
-          Athletes ({sortedAthletes.length})
+          {isCoach ? `Athletes (${sortedAthletes.length})` : 'Your OYO'}
         </Text>
 
         {sortedAthletes.length === 0 ? (

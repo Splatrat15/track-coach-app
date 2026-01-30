@@ -6,6 +6,7 @@ import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, Touchable
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { baseStyles } from '../../../constants/styles';
 import { ThemeColors } from '../../../constants/themes';
+import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import {
     getAthleteById,
@@ -18,6 +19,7 @@ import { formatTimeArizona, getDateKey, normalizeDate } from '../../../utils/dat
 export default function AthleteOyoSubmissionScreen() {
   const router = useRouter();
   const { id, date } = useLocalSearchParams<{ id: string; date?: string }>();
+  const { currentUser } = useAuth();
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const isTablet = width >= 768;
@@ -54,6 +56,13 @@ export default function AthleteOyoSubmissionScreen() {
 
   useEffect(() => {
     const init = async () => {
+      // Athletes can only view/submit their own OYO; redirect if they opened another athlete's
+      if (currentUser?.role === 'athlete' && currentUser?.athleteId && id && id !== currentUser.athleteId) {
+        const dateKey = getDateKey(selectedDate);
+        router.replace(`/(tabs)/oyo?date=${dateKey}`);
+        return;
+      }
+
       // Reset state first when athlete changes
       setPhotoUri(undefined);
       setDescription('');
@@ -82,7 +91,7 @@ export default function AthleteOyoSubmissionScreen() {
       setIsLoading(false);
     };
     init();
-  }, [id, selectedDate]);
+  }, [id, selectedDate, currentUser?.role, currentUser?.athleteId]);
 
   const handlePickImage = async () => {
     try {
